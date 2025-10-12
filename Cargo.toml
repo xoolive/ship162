@@ -1,0 +1,26 @@
+[workspace]
+members = ["crates/*"]
+resolver = "2"
+
+[workspace.package]
+license = "MIT"
+edition = "2021"
+readme = "readme.md"
+version = "0.1.0"
+authors = ["Xavier Olive <git@xoolive.org>"]
+homepage = "https://github.com/xoolive/ship162"
+documentation = "https://crates.io/crates/rs162"
+
+[workspace.metadata.release]
+shared-version = true
+tag-name = "v{{version}}"
+
+[profile.release]
+lto = true
+strip = true
+overflow-checks = true
+
+# The profile that 'cargo dist' will build with
+[profile.dist]
+inherits = "release"
+lto = "thin"

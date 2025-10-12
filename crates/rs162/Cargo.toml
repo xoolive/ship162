@@ -1,0 +1,20 @@
+[package]
+name = "rs162"
+description = "NMEA AIS Message Parser and Decoder with deku-based AIS message structures"
+repository = "https://github.com/xoolive/ship162"
+keywords = ["ais", "nmea", "maritime", "radio", "decoder"]
+categories = ["parsing", "encoding"]
+authors.workspace = true
+version.workspace = true
+license.workspace = true
+edition.workspace = true
+
+[dependencies]
+thiserror = "2.0.17"
+deku = "0.19.1"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+[lib]
+name = "rs162"
+path = "src/lib.rs"
