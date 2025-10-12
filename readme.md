@@ -24,9 +24,9 @@ The ultimate goal is to create a complete maritime tracking solution that can re
 
 ## Similar Projects
 
+- [AIS-catcher](https://github.com/jvde-github/AIS-catcher) in C++
 - [pyais](https://github.com/M0r13n/pyais/) in Python
-- [ais](https://github.com/squidpickles/ais) in Rust
-- [nmea-parser](https://github.com/zaari/nmea-parser) in Rust
+- [ais](https://github.com/squidpickles/ais) or [nmea-parser](https://github.com/zaari/nmea-parser) in Rust
 
 The key differentiator of ship162 is its use of deku for declarative binary parsing, providing both performance and correctness guarantees that are difficult to achieve with manual bit manipulation.
 
