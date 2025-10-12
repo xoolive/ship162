@@ -126,7 +126,8 @@ pub struct ExtendedClassBPositionReport {
     pub assigned: bool,
 
     /// Spare bits (should be zero)
-    #[deku(bits = "4")]
+    #[deku(bits = "4", assert_eq = "0")]
+    #[serde(skip)]
     pub spare_1: u8,
 }
 

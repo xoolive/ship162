@@ -82,7 +82,8 @@ pub struct AddressedSafetyMessage {
     pub retransmit: bool,
 
     /// Spare bit (should be zero)
-    #[deku(bits = "1")]
+    #[deku(bits = "1", assert_eq = "0")]
+    #[serde(skip)]
     pub spare_1: u8,
 
     /// Safety-related text message (variable length, up to 936 bits)

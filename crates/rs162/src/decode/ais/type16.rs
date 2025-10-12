@@ -26,7 +26,8 @@ pub struct AssignmentCommandSingle {
     pub mmsi: u32,
 
     /// Spare bits (should be zero)
-    #[deku(bits = "2")]
+    #[deku(bits = "2", assert_eq = "0")]
+    #[serde(skip)]
     pub spare_1: u8,
 
     /// First station MMSI to assign
@@ -45,7 +46,8 @@ pub struct AssignmentCommandSingle {
     pub increment1: u16,
 
     /// Spare bits (should be zero)
-    #[deku(bits = "4")]
+    #[deku(bits = "4", assert_eq = "0")]
+    #[serde(skip)]
     pub spare_2: u8,
 }
 

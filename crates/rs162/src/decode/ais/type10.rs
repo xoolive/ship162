@@ -29,7 +29,8 @@ pub struct UtcDateInquiry {
     pub mmsi: u32,
 
     /// Spare bits (should be zero)
-    #[deku(bits = "2")]
+    #[deku(bits = "2", assert_eq = "0")]
+    #[serde(skip)]
     pub spare_1: u8,
 
     /// Destination MMSI - target station for the inquiry
@@ -40,7 +41,8 @@ pub struct UtcDateInquiry {
     pub dest_mmsi: u32,
 
     /// Spare bits (should be zero)
-    #[deku(bits = "2")]
+    #[deku(bits = "2", assert_eq = "0")]
+    #[serde(skip)]
     pub spare_2: u8,
 }
 

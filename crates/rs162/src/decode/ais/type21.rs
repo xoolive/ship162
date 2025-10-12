@@ -123,7 +123,8 @@ pub struct AidToNavigationReport {
     pub assigned: bool,
 
     /// Spare bit (should be zero)
-    #[deku(bits = "1")]
+    #[deku(bits = "1", assert_eq = "0")]
+    #[serde(skip)]
     pub spare_1: u8,
 
     /// Name extension (14 6-bit characters, if any) - optional, only present if message > 272 bits

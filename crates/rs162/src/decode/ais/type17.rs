@@ -41,7 +41,8 @@ pub struct DgnssBroadcastMessage {
     pub mmsi: u32,
 
     /// Spare bits (should be zero)
-    #[deku(bits = "2")]
+    #[deku(bits = "2", assert_eq = "0")]
+    #[serde(skip)]
     pub spare_1: u8,
 
     /// Longitude in 1/10 minutes (signed)
@@ -59,7 +60,8 @@ pub struct DgnssBroadcastMessage {
     pub lat: f64,
 
     /// Spare bits (should be zero)
-    #[deku(bits = "5")]
+    #[deku(bits = "5", assert_eq = "0")]
+    #[serde(skip)]
     pub spare_2: u8,
 
     /// Binary data payload (variable length, up to 736 bits)

@@ -52,7 +52,8 @@ pub struct DataLinkManagementMessage {
     pub mmsi: u32,
 
     /// Spare bits (should be zero)
-    #[deku(bits = "2")]
+    #[deku(bits = "2", assert_eq = "0")]
+    #[serde(skip)]
     pub spare_1: u8,
 
     /// Slot offset 1

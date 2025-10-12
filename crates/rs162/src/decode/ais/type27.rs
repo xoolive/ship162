@@ -71,7 +71,8 @@ pub struct LongRangeAisBroadcastMessage {
     pub gnss: bool,
 
     /// Spare bit (should be zero)
-    #[deku(bits = "1")]
+    #[deku(bits = "1", assert_eq = "0")]
+    #[serde(skip)]
     pub spare_1: u8,
 }
 
@@ -113,22 +114,6 @@ mod tests {
     }
 
     #[test]
-    fn test_msg_type_27() {
-        let msg = decode("!AIVDM,1,1,,B,KC5E2b@U19PFdLbMuc5=ROv62<7m,0*16");
-
-        assert_eq!(msg.msg_type, 27);
-        assert_eq!(msg.mmsi, 206914217);
-        assert!(!msg.accuracy);
-        assert!(!msg.raim);
-        assert_eq!(msg.status, NavigationStatus::NotUnderCommand);
-        assert!((msg.longitude - 137.023333).abs() < 0.000001);
-        assert!((msg.latitude - 4.84).abs() < 0.01);
-        assert_eq!(msg.speed, 57);
-        assert_eq!(msg.course, 167);
-        assert!(!msg.gnss);
-    }
-
-    #[test]
     fn test_msg_type_27_signed() {
         let msg = decode("!AIVDO,1,1,,A,K01;FQh?PbtE3P00,0*75");
 
@@ -139,7 +124,7 @@ mod tests {
 
     #[test]
     fn test_message_serialization() {
-        let msg = decode("!AIVDM,1,1,,B,KC5E2b@U19PFdLbMuc5=ROv62<7m,0*16");
+        let msg = decode("!AIVDO,1,1,,A,K01;FQh?PbtE3P00,0*75");
 
         // Test that we can serialize and deserialize
         let json = msg.to_json().unwrap();

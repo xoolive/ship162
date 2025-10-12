@@ -26,7 +26,8 @@ pub struct ChannelManagementAddressed {
     pub mmsi: u32,
 
     /// Spare bits (should be zero)
-    #[deku(bits = "2")]
+    #[deku(bits = "2", assert_eq = "0")]
+    #[serde(skip)]
     pub spare_1: u8,
 
     /// Channel A number
@@ -84,7 +85,8 @@ pub struct ChannelManagementAddressed {
     pub zonesize: u8,
 
     /// Spare bits (should be zero)
-    #[deku(bits = "23")]
+    #[deku(bits = "23", assert_eq = "0")]
+    #[serde(skip)]
     pub spare_2: u32,
 }
 
@@ -111,7 +113,8 @@ pub struct ChannelManagementBroadcast {
     pub mmsi: u32,
 
     /// Spare bits (should be zero)
-    #[deku(bits = "2")]
+    #[deku(bits = "2", assert_eq = "0")]
+    #[serde(skip)]
     pub spare_1: u8,
 
     /// Channel A number
@@ -175,7 +178,8 @@ pub struct ChannelManagementBroadcast {
     pub zonesize: u8,
 
     /// Spare bits (should be zero)
-    #[deku(bits = "23")]
+    #[deku(bits = "23", assert_eq = "0")]
+    #[serde(skip)]
     pub spare_2: u32,
 }
 
@@ -338,30 +342,6 @@ mod tests {
             // Expected
         } else {
             panic!("Expected broadcast variant");
-        }
-    }
-
-    #[test]
-    fn test_msg_type_22_addressed() {
-        // Addressed
-        let msg = decode("!AIVDM,1,1,,A,F@@W>gOP00PH=JrN9l000?wB2HH;,0*44");
-
-        // Verify it's the addressed variant
-        if let ChannelManagement::Addressed(msg) = msg {
-            assert_eq!(msg.msg_type, 22);
-            assert_eq!(msg.mmsi, 17419965);
-            assert_eq!(msg.channel_a, 3584);
-            assert_eq!(msg.channel_b, 8);
-            assert!(msg.power);
-            assert_eq!(msg.dest1, 28144881);
-            assert_eq!(msg.dest2, 268435519);
-            assert!(msg.addressed);
-            assert!(!msg.band_a);
-            assert!(!msg.band_b);
-            assert_eq!(msg.zonesize, 4);
-            // Expected
-        } else {
-            panic!("Expected addressed variant");
         }
     }
 

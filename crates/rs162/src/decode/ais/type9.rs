@@ -73,7 +73,8 @@ pub struct SarAircraftPositionReport {
     pub dte: bool,
 
     /// Spare bits (should be zero)
-    #[deku(bits = "3")]
+    #[deku(bits = "3", assert_eq = "0")]
+    #[serde(skip)]
     pub spare_1: u8,
 
     /// Assigned flag (0 = autonomous mode, 1 = assigned mode)

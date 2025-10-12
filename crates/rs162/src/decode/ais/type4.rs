@@ -82,7 +82,8 @@ pub struct BaseStationTimeReport {
     pub epfd: EpfdType,
 
     /// Spare bits (should be zero)
-    #[deku(bits = "10")]
+    #[deku(bits = "10", assert_eq = "0")]
+    #[serde(skip)]
     pub spare_1: u16,
 
     /// RAIM flag

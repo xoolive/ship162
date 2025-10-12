@@ -125,7 +125,8 @@ pub struct StaticDataReportPartB {
     pub to_starboard: u8,
 
     /// Spare bits (should be zero)
-    #[deku(bits = "6")]
+    #[deku(bits = "6", assert_eq = "0")]
+    #[serde(skip)]
     pub spare_1: u8,
 }
 

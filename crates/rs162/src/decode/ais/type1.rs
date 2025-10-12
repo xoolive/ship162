@@ -95,7 +95,8 @@ pub struct PositionReport {
     pub maneuver: ManeuverIndicator,
 
     /// Spare bits (should be zero)
-    #[deku(bits = "3")]
+    #[deku(bits = "3", assert_eq = "0")]
+    #[serde(skip)]
     pub spare_1: u8,
 
     /// RAIM flag
@@ -225,7 +226,7 @@ mod tests {
 
         // Test that we can serialize and deserialize
         let json = msg.to_json().unwrap();
-        let expected_json = r#"{"msg_type":1,"repeat":0,"mmsi":366053209,"status":"RestrictedManoeuverability","turn":0.0,"speed":0.0,"accuracy":false,"longitude":-122.34161833333333,"latitude":37.80211833333333,"course":219.3,"heading":1,"second":59,"maneuver":"NotAvailable","spare_1":0,"raim":false,"radio":2281}"#;
+        let expected_json = r#"{"msg_type":1,"repeat":0,"mmsi":366053209,"status":"RestrictedManoeuverability","turn":0.0,"speed":0.0,"accuracy":false,"longitude":-122.34161833333333,"latitude":37.80211833333333,"course":219.3,"heading":1,"second":59,"maneuver":"NotAvailable","raim":false,"radio":2281}"#;
         assert_eq!(json, expected_json);
     }
 

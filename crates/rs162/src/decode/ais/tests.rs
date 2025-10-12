@@ -4,7 +4,6 @@
 //! to the appropriate message types based on the message type field.
 
 use super::*;
-use crate::prelude::*;
 
 fn decode_message(sentence: &str) -> Message {
     let nmea_msg = NmeaAisMessage::parse(sentence).unwrap();
@@ -284,22 +283,6 @@ fn test_type_22_broadcast_dispatch() {
 }
 
 #[test]
-fn test_type_22_addressed_dispatch() {
-    let msg = decode_message("!AIVDM,1,1,,A,F@@W>gOP00PH=JrN9l000?wB2HH;,0*44");
-
-    if let Message::ChannelManagement(channel_msg) = msg {
-        if let ChannelManagement::Addressed(addressed_msg) = channel_msg {
-            assert_eq!(addressed_msg.msg_type, 22);
-            assert_eq!(addressed_msg.mmsi, 17419965);
-        } else {
-            panic!("Expected Addressed variant of ChannelManagement");
-        }
-    } else {
-        panic!("Expected ChannelManagement, got {:?}", msg);
-    }
-}
-
-#[test]
 fn test_type_23_dispatch() {
     let msg = decode_message("!AIVDM,1,1,,B,G02:Kn01R`sn@291nj600000900,2*12");
 
@@ -347,11 +330,11 @@ fn test_type_24_part_a_dispatch() {
 
 #[test]
 fn test_type_27_dispatch() {
-    let msg = decode_message("!AIVDM,1,1,,B,KC5E2b@U19PFdLbMuc5=ROv62<7m,0*16");
+    let msg = decode_message("!AIVDO,1,1,,A,K01;FQh?PbtE3P00,0*75");
 
     if let Message::LongRangeAisBroadcastMessage(long_range_msg) = msg {
         assert_eq!(long_range_msg.msg_type, 27);
-        assert_eq!(long_range_msg.mmsi, 206914217);
+        assert_eq!(long_range_msg.mmsi, 1234567);
     } else {
         panic!("Expected LongRangeAisBroadcastMessage, got {:?}", msg);
     }

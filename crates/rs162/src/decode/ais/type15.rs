@@ -68,6 +68,7 @@ pub struct Interrogation {
 
     /// Spare bits (should be zero)
     #[deku(bits = "2", assert_eq = "0")]
+    #[serde(skip)]
     pub spare_1: u8,
 
     /// First station MMSI to interrogate
@@ -87,6 +88,7 @@ pub struct Interrogation {
 
     /// Spare bits (should be zero)
     #[deku(reader = "read_optional_u8(2)(deku::reader)")]
+    #[serde(skip)]
     pub spare_2: Option<u8>,
 
     /// Second message type requested from first station (optional)
@@ -99,6 +101,7 @@ pub struct Interrogation {
 
     /// Spare bits (should be zero) (optional)
     #[deku(reader = "read_optional_u8(2)(deku::reader)")]
+    #[serde(skip)]
     pub spare_3: Option<u8>,
 
     /// Second station MMSI to interrogate (optional)
@@ -115,6 +118,7 @@ pub struct Interrogation {
 
     /// Spare bits (should be zero) (optional)
     #[deku(reader = "read_optional_u8(2)(deku::reader)")]
+    #[serde(skip)]
     pub spare_4: Option<u8>,
 }
 

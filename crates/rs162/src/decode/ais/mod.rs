@@ -68,6 +68,7 @@ use std::io::Seek;
 
 /// General AIS message type that dispatches to specific message types based on message type field
 #[derive(Debug, PartialEq, Serialize)]
+#[serde(untagged)]
 pub enum Message {
     PositionReport1(PositionReport),
     PositionReport2(PositionReport),
