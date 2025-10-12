@@ -100,7 +100,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 ```rust
 // See examples/nmea_file.rs for a complete file processor
-cargo run --example nmea_file -- data/ais_nmea.txt
+cargo run --example nmea_file
 ```
 
 ### Real-time TCP Stream Processing
@@ -108,7 +108,7 @@ cargo run --example nmea_file -- data/ais_nmea.txt
 ```rust
 // See examples/nmea_tcp.rs for live AIS data processing
 // Connects to Norwegian Coastal Administration's free AIS feed
-cargo run --example nmea_tcp -- 153.44.253.27:5631
+cargo run --example nmea_tcp -- 153.44.253.27:5631 | jq -c
 ```
 
 ## Technical Standards
