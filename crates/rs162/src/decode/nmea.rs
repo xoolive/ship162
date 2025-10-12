@@ -90,7 +90,12 @@ impl NmeaAisMessage {
 
         // Parse fields
         let message_type = fields[0].to_string();
-        if message_type != "AIVDM" && message_type != "AIVDO" && message_type != "BSVDM" {
+        if message_type != "AIVDM"
+            && message_type != "AIVDO"
+            && message_type != "BSVDM"
+            && message_type != "B1VDM"
+            && message_type != "B2VDM"
+        {
             return Err(NmeaError::InvalidFormat);
         }
 
