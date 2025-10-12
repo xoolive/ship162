@@ -108,7 +108,7 @@ cargo run --example nmea_file
 ```rust
 // See examples/nmea_tcp.rs for live AIS data processing
 // Connects to Norwegian Coastal Administration's free AIS feed
-cargo run --example nmea_tcp -- 153.44.253.27:5631 | jq -c
+cargo run --example nmea_tcp -- 153.44.253.27:5631 | jq -c '.message + {timestamp: (.timestamp | strftime("%Y-%m-%dT%H:%M:%SZ"))}'
 ```
 
 ## Technical Standards
