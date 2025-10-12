@@ -172,8 +172,9 @@ pub struct SingleSlotBinaryBroadcastUnstructured {
 /// This message is used for single-slot binary data transmission.
 /// It has four variants based on addressed and structured flags.
 ///
-/// Reference: https://gpsd.gitlab.io/gpsd/AIVDM.html#_type_25_single_slot_binary_message
+/// Reference: <https://gpsd.gitlab.io/gpsd/AIVDM.html#_type_25_single_slot_binary_message>
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(untagged)]
 pub enum SingleSlotBinaryMessage {
     /// Addressed structured message
     AddressedStructured(SingleSlotBinaryAddressedStructured),

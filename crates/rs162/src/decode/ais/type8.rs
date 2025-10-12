@@ -9,7 +9,7 @@ use super::converters::*;
 /// This message is used for broadcasting binary data. Different variants exist
 /// based on the DAC (Designated Area Code) and FID (Function Identifier).
 ///
-/// Reference: https://gpsd.gitlab.io/gpsd/AIVDM.html#_type_8_binary_broadcast_message
+/// Reference: <https://gpsd.gitlab.io/gpsd/AIVDM.html#_type_8_binary_broadcast_message>
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum BinaryBroadcastMessage {
     /// Default variant for unknown DAC/FID combinations
@@ -38,7 +38,7 @@ pub struct MessageType8Default {
     pub mmsi: u32,
 
     /// Spare bits (should be zero)
-    #[deku(bits = "2", assert_eq = "0")]
+    #[deku(bits = "2")]
     #[serde(skip)]
     pub spare_1: u8,
 
@@ -75,7 +75,7 @@ pub struct MessageType8Dac200Fid10 {
     pub mmsi: u32,
 
     /// Spare bits (should be zero)
-    #[deku(bits = "2", assert_eq = "0")]
+    #[deku(bits = "2")]
     #[serde(skip)]
     pub spare_1: u8,
 

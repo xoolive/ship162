@@ -9,7 +9,7 @@ use super::converters::*;
 /// It's a simple query message that contains the MMSI of the requesting station
 /// and the MMSI of the target station.
 ///
-/// Reference: https://gpsd.gitlab.io/gpsd/AIVDM.html#_type_10_utc_date_inquiry
+/// Reference: <https://gpsd.gitlab.io/gpsd/AIVDM.html#_type_10_utc_date_inquiry>
 #[derive(Debug, Clone, PartialEq, DekuRead, Serialize, Deserialize)]
 #[deku(endian = "big")]
 pub struct UtcDateInquiry {

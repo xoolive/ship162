@@ -10,7 +10,7 @@ use super::converters::*;
 /// there are many vessels and spectrum is tight. It provides reduced
 /// position data with lower accuracy but extended range.
 ///
-/// Reference: https://gpsd.gitlab.io/gpsd/AIVDM.html#_type_27_long_range_ais_broadcast_message
+/// Reference: <https://gpsd.gitlab.io/gpsd/AIVDM.html#_type_27_long_range_ais_broadcast_message>
 #[derive(Debug, Clone, PartialEq, DekuRead, Serialize, Deserialize)]
 #[deku(endian = "big")]
 pub struct LongRangeAisBroadcastMessage {
@@ -71,7 +71,7 @@ pub struct LongRangeAisBroadcastMessage {
     pub gnss: bool,
 
     /// Spare bit (should be zero)
-    #[deku(bits = "1", assert_eq = "0")]
+    #[deku(bits = "1")]
     #[serde(skip)]
     pub spare_1: u8,
 }

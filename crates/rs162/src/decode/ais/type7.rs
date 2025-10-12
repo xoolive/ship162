@@ -34,7 +34,7 @@ fn read_optional_seq<R: std::io::Read + std::io::Seek>(
 /// It can acknowledge up to 4 different messages by including the MMSI and
 /// sequence number of each message being acknowledged.
 ///
-/// Reference: https://gpsd.gitlab.io/gpsd/AIVDM.html#_type_7_binary_acknowledge
+/// Reference: <https://gpsd.gitlab.io/gpsd/AIVDM.html#_type_7_binary_acknowledge>
 #[derive(Debug, Clone, PartialEq, DekuRead, Serialize, Deserialize)]
 #[deku(endian = "big")]
 pub struct BinaryAcknowledge {
@@ -54,7 +54,7 @@ pub struct BinaryAcknowledge {
     pub mmsi: u32,
 
     /// Spare bits (should be zero)
-    #[deku(bits = "2", assert_eq = "0")]
+    #[deku(bits = "2")]
     #[serde(skip)]
     pub spare_1: u8,
 

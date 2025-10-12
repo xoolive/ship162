@@ -13,7 +13,7 @@ use super::converters::*;
 /// It includes UTC time, position coordinates, and information about the electronic
 /// position fixing device (EPFD) being used.
 ///
-/// Reference: https://gpsd.gitlab.io/gpsd/AIVDM.html#_type_4_base_station_report
+/// Reference: <https://gpsd.gitlab.io/gpsd/AIVDM.html#_type_4_base_station_report>
 #[derive(Debug, Clone, PartialEq, DekuRead, Serialize, Deserialize)]
 #[deku(endian = "big")]
 pub struct BaseStationTimeReport {

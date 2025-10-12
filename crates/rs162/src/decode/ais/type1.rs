@@ -14,7 +14,7 @@ use super::converters::*;
 /// - Type 2: Assigned scheduled position report  
 /// - Type 3: Special position report, response to interrogation
 ///
-/// Reference: https://gpsd.gitlab.io/gpsd/AIVDM.html#_types_1_2_and_3_position_report_class_a
+/// Reference: <https://gpsd.gitlab.io/gpsd/AIVDM.html#_types_1_2_and_3_position_report_class_a>
 #[derive(Debug, Clone, PartialEq, DekuRead, Serialize, Deserialize)]
 #[deku(endian = "big")]
 pub struct PositionReport {
@@ -95,7 +95,7 @@ pub struct PositionReport {
     pub maneuver: ManeuverIndicator,
 
     /// Spare bits (should be zero)
-    #[deku(bits = "3", assert_eq = "0")]
+    #[deku(bits = "3")]
     #[serde(skip)]
     pub spare_1: u8,
 

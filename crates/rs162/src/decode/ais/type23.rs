@@ -10,7 +10,7 @@ use super::converters::*;
 /// geographic area. It is used to reduce channel loading by commanding
 /// Class B units to reduce their reporting rate in congested areas.
 ///
-/// Reference: https://gpsd.gitlab.io/gpsd/AIVDM.html#_type_23_group_assignment_command
+/// Reference: <https://gpsd.gitlab.io/gpsd/AIVDM.html#_type_23_group_assignment_command>
 #[derive(Debug, Clone, PartialEq, DekuRead, Serialize, Deserialize)]
 #[deku(endian = "big")]
 pub struct GroupAssignmentCommand {
@@ -30,7 +30,7 @@ pub struct GroupAssignmentCommand {
     pub mmsi: u32,
 
     /// Spare bits (should be zero)
-    #[deku(bits = "2", assert_eq = "0")]
+    #[deku(bits = "2")]
     #[serde(skip)]
     pub spare_1: u8,
 
@@ -77,7 +77,7 @@ pub struct GroupAssignmentCommand {
     pub ship_type: ShipType,
 
     /// Spare bits (should be zero)
-    #[deku(bits = "22", assert_eq = "0")]
+    #[deku(bits = "22")]
     #[serde(skip)]
     pub spare_2: u32,
 
@@ -100,7 +100,7 @@ pub struct GroupAssignmentCommand {
     pub quiet: u8,
 
     /// Spare bits (should be zero)
-    #[deku(bits = "6", assert_eq = "0")]
+    #[deku(bits = "6")]
     #[serde(skip)]
     pub spare_3: u8,
 }

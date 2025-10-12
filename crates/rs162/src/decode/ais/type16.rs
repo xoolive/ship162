@@ -46,7 +46,7 @@ pub struct AssignmentCommandSingle {
     pub increment1: u16,
 
     /// Spare bits (should be zero)
-    #[deku(bits = "4", assert_eq = "0")]
+    #[deku(bits = "4")]
     #[serde(skip)]
     pub spare_2: u8,
 }
@@ -115,8 +115,9 @@ pub struct AssignmentCommandDouble {
 /// - 96 bits: Single station assignment
 /// - 144 bits: Two station assignment
 ///
-/// Reference: https://gpsd.gitlab.io/gpsd/AIVDM.html#_type_16_assignment_mode_command
+/// Reference: <https://gpsd.gitlab.io/gpsd/AIVDM.html#_type_16_assignment_mode_command>
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(untagged)]
 pub enum AssignmentModeCommand {
     /// Single station assignment (96 bits)
     Single(AssignmentCommandSingle),

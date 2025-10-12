@@ -9,7 +9,7 @@ use super::converters::*;
 /// This message is used by Class B shipborne mobile equipment to report position,
 /// course, speed, and static information including vessel name and dimensions.
 ///
-/// Reference: https://gpsd.gitlab.io/gpsd/AIVDM.html#_type_19_extended_class_b_cs_position_report
+/// Reference: <https://gpsd.gitlab.io/gpsd/AIVDM.html#_type_19_extended_class_b_cs_position_report>
 #[derive(Debug, Clone, PartialEq, DekuRead, Serialize, Deserialize)]
 #[deku(endian = "big")]
 pub struct ExtendedClassBPositionReport {
@@ -126,7 +126,7 @@ pub struct ExtendedClassBPositionReport {
     pub assigned: bool,
 
     /// Spare bits (should be zero)
-    #[deku(bits = "4", assert_eq = "0")]
+    #[deku(bits = "4")]
     #[serde(skip)]
     pub spare_1: u8,
 }

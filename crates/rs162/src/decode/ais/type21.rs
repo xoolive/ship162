@@ -24,7 +24,7 @@ fn read_optional_name_ext<R: std::io::Read + std::io::Seek>(
 /// Message length varies between 272 and 360 bits depending on the presence
 /// and size of the Name Extension field.
 ///
-/// Reference: https://gpsd.gitlab.io/gpsd/AIVDM.html#_type_21_aid_to_navigation_report
+/// Reference: <https://gpsd.gitlab.io/gpsd/AIVDM.html#_type_21_aid_to_navigation_report>
 #[derive(Debug, Clone, PartialEq, DekuRead, Serialize, Deserialize)]
 #[deku(endian = "big")]
 pub struct AidToNavigationReport {
@@ -123,7 +123,7 @@ pub struct AidToNavigationReport {
     pub assigned: bool,
 
     /// Spare bit (should be zero)
-    #[deku(bits = "1", assert_eq = "0")]
+    #[deku(bits = "1")]
     #[serde(skip)]
     pub spare_1: u8,
 

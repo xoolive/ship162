@@ -32,7 +32,7 @@ fn read_optional_u8<R: std::io::Read + std::io::Seek>(
 /// are implementing or studying an AIS base station network.
 /// Length varies from 72-160 bits depending on the number of slot reservations (1 to 4).
 ///
-/// Reference: https://gpsd.gitlab.io/gpsd/AIVDM.html#_type_20_data_link_management_message
+/// Reference: <https://gpsd.gitlab.io/gpsd/AIVDM.html#_type_20_data_link_management_message>
 #[derive(Debug, Clone, PartialEq, DekuRead, Serialize, Deserialize)]
 #[deku(endian = "big")]
 pub struct DataLinkManagementMessage {
@@ -52,7 +52,7 @@ pub struct DataLinkManagementMessage {
     pub mmsi: u32,
 
     /// Spare bits (should be zero)
-    #[deku(bits = "2", assert_eq = "0")]
+    #[deku(bits = "2")]
     #[serde(skip)]
     pub spare_1: u8,
 

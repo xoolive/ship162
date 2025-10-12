@@ -8,7 +8,7 @@ use super::converters::*;
 /// This message is used by search and rescue aircraft to report their position.
 /// It contains essential navigation data including position, altitude, course, and speed.
 ///
-/// Reference: https://gpsd.gitlab.io/gpsd/AIVDM.html#_type_9_standard_sar_aircraft_position_report
+/// Reference: <https://gpsd.gitlab.io/gpsd/AIVDM.html#_type_9_standard_sar_aircraft_position_report>
 #[derive(Debug, Clone, PartialEq, DekuRead, Serialize, Deserialize)]
 #[deku(endian = "big")]
 pub struct SarAircraftPositionReport {
@@ -73,7 +73,7 @@ pub struct SarAircraftPositionReport {
     pub dte: bool,
 
     /// Spare bits (should be zero)
-    #[deku(bits = "3", assert_eq = "0")]
+    #[deku(bits = "3")]
     #[serde(skip)]
     pub spare_1: u8,
 

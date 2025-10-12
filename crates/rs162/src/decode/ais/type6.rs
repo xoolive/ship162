@@ -22,7 +22,7 @@ fn read_remaining_bits<R: std::io::Read + std::io::Seek>(
 /// It contains addressing information and a variable-length data payload.
 /// The data field can contain up to 920 bits of application-specific information.
 ///
-/// Reference: https://gpsd.gitlab.io/gpsd/AIVDM.html#_type_6_binary_addressed_message
+/// Reference: <https://gpsd.gitlab.io/gpsd/AIVDM.html#_type_6_binary_addressed_message>
 #[derive(Debug, Clone, PartialEq, DekuRead, Serialize, Deserialize)]
 #[deku(endian = "big")]
 pub struct BinaryAddressedMessage {
@@ -57,7 +57,7 @@ pub struct BinaryAddressedMessage {
     pub retransmit: bool,
 
     /// Spare bit (should be zero)
-    #[deku(bits = "1", assert_eq = "0")]
+    #[deku(bits = "1")]
     #[serde(skip)]
     pub spare_1: u8,
 

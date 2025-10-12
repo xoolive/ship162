@@ -47,7 +47,7 @@ fn read_remaining_text<R: std::io::Read + std::io::Seek>(
 /// This message is used to broadcast safety-related text messages to all stations.
 /// Unlike Type 12, this is a broadcast message without specific addressing.
 ///
-/// Reference: https://gpsd.gitlab.io/gpsd/AIVDM.html#_type_14_safety_related_broadcast_message
+/// Reference: <https://gpsd.gitlab.io/gpsd/AIVDM.html#_type_14_safety_related_broadcast_message>
 #[derive(Debug, Clone, PartialEq, DekuRead, Serialize, Deserialize)]
 #[deku(endian = "big")]
 pub struct SafetyBroadcastMessage {

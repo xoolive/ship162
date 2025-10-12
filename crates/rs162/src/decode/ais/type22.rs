@@ -26,7 +26,7 @@ pub struct ChannelManagementAddressed {
     pub mmsi: u32,
 
     /// Spare bits (should be zero)
-    #[deku(bits = "2", assert_eq = "0")]
+    #[deku(bits = "2")]
     #[serde(skip)]
     pub spare_1: u8,
 
@@ -190,7 +190,7 @@ pub struct ChannelManagementBroadcast {
 /// - If addressed field is 0: broadcast mode with geographical coordinates
 /// - If addressed field is 1: addressed mode with destination MMSIs
 ///
-/// Reference: https://gpsd.gitlab.io/gpsd/AIVDM.html#_type_22_channel_management
+/// Reference: <https://gpsd.gitlab.io/gpsd/AIVDM.html#_type_22_channel_management>
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum ChannelManagement {
     /// Broadcast mode (addressed = 0) - with geographical area

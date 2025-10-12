@@ -125,7 +125,7 @@ pub struct StaticDataReportPartB {
     pub to_starboard: u8,
 
     /// Spare bits (should be zero)
-    #[deku(bits = "6", assert_eq = "0")]
+    #[deku(bits = "6")]
     #[serde(skip)]
     pub spare_1: u8,
 }
@@ -137,8 +137,9 @@ pub struct StaticDataReportPartB {
 /// - Part A (partno = 0): Contains vessel name
 /// - Part B (partno = 1): Contains vessel type, dimensions, and equipment info
 ///
-/// Reference: https://gpsd.gitlab.io/gpsd/AIVDM.html#_type_24_static_data_report
+/// Reference: <https://gpsd.gitlab.io/gpsd/AIVDM.html#_type_24_static_data_report>
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(untagged)]
 pub enum StaticDataReport {
     /// Part A (partno = 0) - vessel name
     PartA(StaticDataReportPartA),

@@ -47,7 +47,7 @@ fn read_remaining_text<R: std::io::Read + std::io::Seek>(
 /// This message is used to send safety-related text messages to a specific station.
 /// It contains addressing information and a variable-length text payload.
 ///
-/// Reference: https://gpsd.gitlab.io/gpsd/AIVDM.html#_type_12_addressed_safety_related_message
+/// Reference: <https://gpsd.gitlab.io/gpsd/AIVDM.html#_type_12_addressed_safety_related_message>
 #[derive(Debug, Clone, PartialEq, DekuRead, Serialize, Deserialize)]
 #[deku(endian = "big")]
 pub struct AddressedSafetyMessage {
@@ -82,7 +82,7 @@ pub struct AddressedSafetyMessage {
     pub retransmit: bool,
 
     /// Spare bit (should be zero)
-    #[deku(bits = "1", assert_eq = "0")]
+    #[deku(bits = "1")]
     #[serde(skip)]
     pub spare_1: u8,
 

@@ -8,7 +8,7 @@ use super::converters::*;
 /// This message is used by Class B shipborne mobile equipment to report position,
 /// course, and speed information. It's similar to Type 1-3 messages but for Class B equipment.
 ///
-/// Reference: https://gpsd.gitlab.io/gpsd/AIVDM.html#_type_18_standard_class_b_cs_position_report
+/// Reference: <https://gpsd.gitlab.io/gpsd/AIVDM.html#_type_18_standard_class_b_cs_position_report>
 #[derive(Debug, Clone, PartialEq, DekuRead, Serialize, Deserialize)]
 #[deku(endian = "big")]
 pub struct ClassBPositionReport {

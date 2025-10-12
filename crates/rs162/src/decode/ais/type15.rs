@@ -47,7 +47,7 @@ fn read_optional_u16<R: std::io::Read + std::io::Seek>(
 /// This message is used to request specific message types from other stations.
 /// It can interrogate one or two stations, with up to two message type requests per station.
 ///
-/// Reference: https://gpsd.gitlab.io/gpsd/AIVDM.html#_type_15_interrogation
+/// Reference: <https://gpsd.gitlab.io/gpsd/AIVDM.html#_type_15_interrogation>
 #[derive(Debug, Clone, PartialEq, DekuRead, Serialize, Deserialize)]
 #[deku(endian = "big")]
 pub struct Interrogation {
@@ -67,7 +67,7 @@ pub struct Interrogation {
     pub mmsi: u32,
 
     /// Spare bits (should be zero)
-    #[deku(bits = "2", assert_eq = "0")]
+    #[deku(bits = "2")]
     #[serde(skip)]
     pub spare_1: u8,
 

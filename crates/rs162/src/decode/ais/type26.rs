@@ -205,8 +205,9 @@ pub struct MultipleSlotBinaryBroadcastUnstructured {
 /// This message is used for multiple-slot binary data transmission.
 /// It has four variants based on addressed and structured flags.
 ///
-/// Reference: https://gpsd.gitlab.io/gpsd/AIVDM.html#_type_26_multiple_slot_binary_message
+/// Reference: <https://gpsd.gitlab.io/gpsd/AIVDM.html#_type_26_multiple_slot_binary_message>
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(untagged)]
 pub enum MultipleSlotBinaryMessage {
     /// Addressed structured message
     AddressedStructured(MultipleSlotBinaryAddressedStructured),

@@ -10,7 +10,7 @@ use super::converters::*;
 /// call sign, dimensions, destination, and voyage-related data. It's transmitted
 /// as a multi-part message due to its large size.
 ///
-/// Reference: https://gpsd.gitlab.io/gpsd/AIVDM.html#_type_5_static_and_voyage_related_data
+/// Reference: <https://gpsd.gitlab.io/gpsd/AIVDM.html#_type_5_static_and_voyage_related_data>
 #[derive(Debug, Clone, PartialEq, DekuRead, Serialize, Deserialize)]
 #[deku(endian = "big")]
 pub struct StaticAndVoyageData {
@@ -116,7 +116,7 @@ pub struct StaticAndVoyageData {
     pub dte: bool,
 
     /// Spare bit (should be zero)
-    #[deku(bits = "1", assert_eq = "0")]
+    #[deku(bits = "1")]
     #[serde(skip)]
     pub spare_1: u8,
 }

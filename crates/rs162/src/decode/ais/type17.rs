@@ -21,7 +21,7 @@ fn read_remaining_data<R: std::io::Read + std::io::Seek>(
 /// This message is used by differential reference stations to broadcast
 /// differential correction information and other related data.
 ///
-/// Reference: https://gpsd.gitlab.io/gpsd/AIVDM.html#_type_17_dgnss_broadcast_binary_message
+/// Reference: <https://gpsd.gitlab.io/gpsd/AIVDM.html#_type_17_dgnss_broadcast_binary_message>
 #[derive(Debug, Clone, PartialEq, DekuRead, Serialize, Deserialize)]
 #[deku(endian = "big")]
 pub struct DgnssBroadcastMessage {
