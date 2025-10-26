@@ -23,6 +23,8 @@
 //! This module is designed for integration into SDR (Software Defined Radio) applications and AIS receivers.
 //! It assumes the presence of supporting DSP blocks (FIR, CIC, AFC, PLL, etc.) in the crate.
 //!
+
+use crate::decode::nmea::NmeaAisMessage;
 use crate::dsp::*;
 use num_complex::Complex;
 use std::collections::HashSet;
@@ -479,7 +481,6 @@ impl AisDemodulator {
     }
 }
 
-// Add this to your AisDemodulatedMessage implementation
 impl AisDemodulatedMessage {
     /// Validate the AIS message structure and content.
     ///
@@ -511,5 +512,151 @@ impl AisDemodulatedMessage {
         }
 
         true
+    }
+
+    /// Convert an AIS demodulated message to one or more NMEA sentences (AIVDM), fragmenting if needed.
+    pub fn encode_nmea(&self) -> Vec<String> {
+        // 1. Encode bits to AIS 6-bit ASCII
+        let payload = encode_ais_6bit_ascii(&self.bits);
+
+        // 2. Fragment payload (max 56 chars per fragment is typical for AIVDM)
+        let max_payload_len = 56;
+        let mut sentences = Vec::new();
+        let total_fragments = payload.len().div_ceil(max_payload_len) as u8;
+
+        for i in 0..total_fragments {
+            let start = (i as usize) * max_payload_len;
+            let end = ((i as usize + 1) * max_payload_len).min(payload.len());
+            let frag_payload = &payload[start..end];
+
+            // Fill bits: only for last fragment
+            let fill_bits = if i == total_fragments - 1 {
+                let total_bits = self.bits.len() * 8;
+                (6 - (total_bits % 6)) % 6
+            } else {
+                0
+            };
+
+            // Build NmeaAisMessage
+            let nmea_msg = NmeaAisMessage {
+                message_type: "AIVDM".to_string(),
+                fragment_count: total_fragments,
+                fragment_number: i + 1,
+                message_id: if total_fragments > 1 {
+                    Some("1".to_string())
+                } else {
+                    None
+                },
+                channel: self.channel,
+                payload: frag_payload.to_string(),
+                fill_bits: fill_bits as u8,
+                checksum: 0, // Will be computed below
+            };
+
+            // Serialize to NMEA sentence
+            let fields = [
+                nmea_msg.message_type.clone(),
+                nmea_msg.fragment_count.to_string(),
+                nmea_msg.fragment_number.to_string(),
+                nmea_msg.message_id.clone().unwrap_or_default(),
+                nmea_msg.channel.to_string(),
+                nmea_msg.payload.clone(),
+                nmea_msg.fill_bits.to_string(),
+            ];
+            let data_part = fields.join(",");
+            let checksum = data_part.bytes().fold(0u8, |acc, b| acc ^ b);
+            let sentence = format!("!{}*{:02X}", data_part, checksum);
+
+            sentences.push(sentence);
+        }
+        sentences
+    }
+}
+
+/// Encode binary payload as AIS 6-bit ASCII string (MSB-first, matching NMEA standard)
+fn encode_ais_6bit_ascii(bytes: &[u8]) -> String {
+    let mut result = String::new();
+    let mut bit_buffer = 0u32;
+    let mut bits_in_buffer = 0;
+
+    for &byte in bytes {
+        // Add byte to buffer (MSB-first)
+        bit_buffer = (bit_buffer << 8) | (byte as u32);
+        bits_in_buffer += 8;
+
+        // Extract 6-bit groups while we have enough bits
+        while bits_in_buffer >= 6 {
+            let six_bit_val = ((bit_buffer >> (bits_in_buffer - 6)) & 0x3F) as u8;
+            result.push(ais_6bit_to_char(six_bit_val));
+            bits_in_buffer -= 6;
+        }
+    }
+
+    // Handle remaining bits (pad with zeros if needed)
+    if bits_in_buffer > 0 {
+        let six_bit_val = ((bit_buffer << (6 - bits_in_buffer)) & 0x3F) as u8;
+        result.push(ais_6bit_to_char(six_bit_val));
+    }
+
+    result
+}
+
+fn ais_6bit_to_char(val: u8) -> char {
+    match val {
+        0..=39 => (val + 48) as char,
+        40..=63 => (val + 56) as char,
+        _ => '?',
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::prelude::Message;
+
+    use super::*;
+
+    #[test]
+    fn test_encode_nmea() {
+        // Example AIS message bits (each u8 is a byte, as produced by pack_bits_to_bytes_lsb)
+        let bits = vec![
+            20, 58, 86, 192, 110, 0, 0, 0, 1, 1, 96, 231, 124, 181, 32, 20, 212, 6, 3, 21, 20, 115,
+            192, 0, 0, 0, 0, 0, 0, 99, 3, 4, 70, 15, 192, 24, 240, 0, 193, 96, 32, 21, 146, 20, 0,
+            0, 0, 0, 0, 0, 0, 0, 0,
+        ];
+        let msg = AisDemodulatedMessage {
+            bits: bits.clone(),
+            signal_level: 42.0,
+            channel: 'B',
+            timestamp: 1_700_000_000,
+        };
+
+        // Validate message structure
+        assert!(msg.validate(), "AIS message should be valid");
+
+        // Convert to NMEA sentences
+        let sentences = msg.encode_nmea();
+        assert!(
+            !sentences.is_empty(),
+            "Should produce at least one NMEA sentence"
+        );
+
+        // Check sentence contents
+        assert_eq!(
+            sentences[0],
+            "!AIVDM,2,1,1,B,53aFh6p000010F3WO;DP5=@60iDDLt000000001S0hA63t0Ht031H20E,0*7F"
+        );
+        assert_eq!(sentences[1], "!AIVDM,2,2,1,B,TQ@000000000000,2*53");
+
+        let sentence_refs: Vec<&str> = sentences.iter().map(|s| s.as_str()).collect();
+        let message = Message::from_nmea(&sentence_refs).unwrap();
+
+        if let Message::StaticAndVoyageData(msg) = message {
+            assert_eq!(msg.mmsi, 244690971);
+            assert_eq!(msg.destination, "LE HAVRE");
+            assert_eq!(msg.shipname, "HASTA LUEGO");
+            assert_eq!(msg.callsign, "PE 9725");
+        } else {
+            panic!("Decoded message is not StaticAndVoyageData");
+        }
     }
 }
