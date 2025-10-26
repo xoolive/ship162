@@ -1,7 +1,10 @@
-//! RS162 - NMEA AIS Message Parser and Decoder
+//! AIS Message Parser and Decoder
 //!
-//! This library provides functionality to parse NMEA AIVDM/AIVDO messages
-//! and convert them to binary u8 data, then decode them to structured AIS messages.
+//! This library provides functionality to:
+//! - demodulate AIS messages from I/Q samples
+//! - parse NMEA AIVDM/AIVDO messages
+//!
+//! and to convert them to binary u8 data, then decode them to structured AIS messages.
 
 pub mod decode;
 pub mod dsp;

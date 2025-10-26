@@ -26,9 +26,13 @@
 
 use crate::decode::nmea::NmeaAisMessage;
 use crate::dsp::*;
+use crate::prelude::Message;
+use deku::reader::Reader;
+use deku::DekuReader;
 use num_complex::Complex;
 use std::collections::HashSet;
 use std::hash::Hash;
+use std::io::Cursor;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 /// AIS operates at 161.975 MHz (Channel A) and 162.025 MHz (Channel B)
@@ -60,6 +64,8 @@ pub struct AisDemodulatedMessage {
     /// The timestamp (seconds since UNIX epoch) when the message was decoded.
     /// Used for time correlation and logging.
     pub timestamp: u64,
+    /// The NMEA sentences generated from this AIS message.
+    pub nmea_sentences: Vec<String>,
 }
 
 impl PartialEq for AisDemodulatedMessage {
@@ -400,6 +406,7 @@ impl AisDemodulator {
                                         signal_level,
                                         channel,
                                         timestamp: rxtime,
+                                        nmea_sentences: vec![],
                                     };
                                     if msg.validate() {
                                         accumulator.push(msg);
@@ -515,7 +522,7 @@ impl AisDemodulatedMessage {
     }
 
     /// Convert an AIS demodulated message to one or more NMEA sentences (AIVDM), fragmenting if needed.
-    pub fn encode_nmea(&self) -> Vec<String> {
+    pub fn encode_nmea(&self) -> Self {
         // 1. Encode bits to AIS 6-bit ASCII
         let payload = encode_ais_6bit_ascii(&self.bits);
 
@@ -569,7 +576,22 @@ impl AisDemodulatedMessage {
 
             sentences.push(sentence);
         }
-        sentences
+        Self {
+            bits: self.bits.clone(),
+            signal_level: self.signal_level,
+            channel: self.channel,
+            timestamp: self.timestamp,
+            nmea_sentences: sentences,
+        }
+    }
+
+    pub fn decode(&self) -> Option<Message> {
+        if self.bits.len() < 14 {
+            return None;
+        }
+        let cursor = Cursor::new(&self.bits);
+        let mut reader = Reader::new(cursor);
+        Message::from_reader_with_ctx(&mut reader, ()).ok()
     }
 }
 
@@ -628,26 +650,34 @@ mod tests {
             signal_level: 42.0,
             channel: 'B',
             timestamp: 1_700_000_000,
+            nmea_sentences: vec![],
         };
 
         // Validate message structure
         assert!(msg.validate(), "AIS message should be valid");
 
         // Convert to NMEA sentences
-        let sentences = msg.encode_nmea();
+        let nmea_encoded = msg.encode_nmea();
         assert!(
-            !sentences.is_empty(),
+            !nmea_encoded.nmea_sentences.is_empty(),
             "Should produce at least one NMEA sentence"
         );
 
         // Check sentence contents
         assert_eq!(
-            sentences[0],
+            nmea_encoded.nmea_sentences[0],
             "!AIVDM,2,1,1,B,53aFh6p000010F3WO;DP5=@60iDDLt000000001S0hA63t0Ht031H20E,0*7F"
         );
-        assert_eq!(sentences[1], "!AIVDM,2,2,1,B,TQ@000000000000,2*53");
+        assert_eq!(
+            nmea_encoded.nmea_sentences[1],
+            "!AIVDM,2,2,1,B,TQ@000000000000,2*53"
+        );
 
-        let sentence_refs: Vec<&str> = sentences.iter().map(|s| s.as_str()).collect();
+        let sentence_refs: Vec<&str> = nmea_encoded
+            .nmea_sentences
+            .iter()
+            .map(|s| s.as_str())
+            .collect();
         let message = Message::from_nmea(&sentence_refs).unwrap();
 
         if let Message::StaticAndVoyageData(msg) = message {

@@ -1,6 +1,6 @@
 # ship162
 
-**ship162** is a complete maritime tracking application that includes the rs162 Rust library for decoding AIS (Automatic Identification System) messages from NMEA sentences using the `deku` library for clean, declarative binary data parsing.
+**ship162** is a complete maritime tracking application that includes the rs162 Rust library for decoding AIS (Automatic Identification System) messages from binary feeds and NMEA sentences using the `deku` library for clean, declarative binary data parsing.
 
 The library takes its inspiration from the Python [pyais](https://github.com/M0r13n/pyais/) library and leverages [deku](https://github.com/sharksforarms/deku) to provide efficient, type-safe AIS message decoding. The major specificity compared to other implementations is the deku-based decoder, which enables clean bit-level parsing with compile-time guarantees.
 
@@ -108,7 +108,15 @@ cargo run --example nmea_file
 ```sh
 # See examples/nmea_tcp.rs for live AIS data processing
 # Connects to Norwegian Coastal Administration's free AIS feed
-cargo run --example nmea_tcp -- 153.44.253.27:5631 | \
+cargo run --release --example nmea_tcp -- 153.44.253.27:5631 | \
+  jq -c '.message + {timestamp: (.timestamp | strftime("%Y-%m-%dT%H:%M:%SZ"))}'
+```
+
+### Demodulating from I/Q Samples
+
+```sh
+# See examples/iqfile.rs for processing I/Q sample files
+cargo run --release --example iqfile | \
   jq -c '.message + {timestamp: (.timestamp | strftime("%Y-%m-%dT%H:%M:%SZ"))}'
 ```
 

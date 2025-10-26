@@ -1,4 +1,4 @@
-//! RS162 - NMEA AIS Message Parser and Decoder
+//! NMEA AIS Message Parser and Decoder
 //!
 //! This library provides functionality to parse NMEA AIVDM/AIVDO messages
 //! and convert them to binary u8 data.
