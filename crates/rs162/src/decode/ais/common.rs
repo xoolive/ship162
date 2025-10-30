@@ -2,20 +2,30 @@ use serde::{Deserialize, Serialize};
 /// Navigation status values for AIS messages
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum NavigationStatus {
+    #[serde(rename = "Under way using engine")]
     UnderWayUsingEngine = 0,
+    #[serde(rename = "At anchor")]
     AtAnchor = 1,
+    #[serde(rename = "Not under command")]
     NotUnderCommand = 2,
+    #[serde(rename = "Restricted manoeuverability")]
     RestrictedManoeuverability = 3,
+    #[serde(rename = "Constrained by her draught")]
     ConstrainedByHerDraught = 4,
     Moored = 5,
     Aground = 6,
+    #[serde(rename = "Engaged in fishing")]
     EngagedInFishing = 7,
+    #[serde(rename = "Under way sailing")]
     UnderWaySailing = 8,
     ReservedForFutureAmendment9 = 9,
     ReservedForFutureAmendment10 = 10,
+    #[serde(rename = "Power-driven vessel towing astern")]
     PowerDrivenVesselTowingAstern = 11,
+    #[serde(rename = "Power-driven vessel pushing ahead")]
     PowerDrivenVesselPushingAhead = 12,
     ReservedForFutureUse13 = 13,
+    #[serde(rename = "AIS-SART is active")]
     AisSartIsActive = 14,
     Undefined = 15,
 }
@@ -51,10 +61,13 @@ impl ManeuverIndicator {}
 /// Maneuver indicator values
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum ManeuverIndicator {
+    #[serde(rename = "N/A")]
     NotAvailable = 0,
+    #[serde(rename = "No special maneuver")]
     NoSpecialManeuver = 1,
+    #[serde(rename = "Special maneuver")]
     SpecialManeuver = 2,
-    UNDEFINED = 3,
+    Undefined = 3,
 }
 
 impl ManeuverIndicator {
@@ -63,7 +76,7 @@ impl ManeuverIndicator {
             0 => Self::NotAvailable,
             1 => Self::NoSpecialManeuver,
             2 => Self::SpecialManeuver,
-            _ => Self::UNDEFINED,
+            _ => Self::Undefined,
         }
     }
     pub fn to_bits(self) -> u8 {
@@ -87,14 +100,20 @@ impl TurnRate {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum EpfdType {
     Undefined = 0,
+    #[serde(rename = "GPS")]
     Gps = 1,
+    #[serde(rename = "GLONASS")]
     Glonass = 2,
+    #[serde(rename = "Combined GPS/GLONASS")]
     CombinedGpsGlonass = 3,
+    #[serde(rename = "Loran-C")]
     LoranC = 4,
     Chayka = 5,
+    #[serde(rename = "Integrated Navigation System")]
     IntegratedNavigationSystem = 6,
     Surveyed = 7,
     Galileo = 8,
+    #[serde(rename = "Internal GNSS")]
     InternalGnss = 15,
 }
 
@@ -119,29 +138,46 @@ impl EpfdType {
 /// Ship and Cargo Type values
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum ShipType {
+    #[serde(rename = "N/A")]
     NotAvailable = 0,
     // Reserved values 1-19
+    Reserved = 1,
+    // WIG types 21-29
+    #[serde(rename = "Wing in Ground")]
     WingInGround = 20,
-    // More WIG types 21-29
     Fishing = 30,
     Towing = 31,
+    /// Towing: length exceeds 200m or breadth exceeds 25m
+    #[serde(rename = "Towing, large")]
     TowingLarge = 32,
+    #[serde(rename = "Dredging or underwater operations")]
     DredgingOrUnderwaterOps = 33,
+    #[serde(rename = "Diving operations")]
     DivingOps = 34,
+    #[serde(rename = "Military operations")]
     MilitaryOps = 35,
     Sailing = 36,
+    #[serde(rename = "Pleasure craft")]
     PleasureCraft = 37,
     // Reserved 38-39
+    #[serde(rename = "High Speed Craft")]
     HighSpeedCraft = 40,
-    // More HSC types 41-49
+    #[serde(rename = "Pilot Vessel")]
     PilotVessel = 50,
+    #[serde(rename = "Search and Rescue")]
     SearchAndRescue = 51,
     Tug = 52,
+    #[serde(rename = "Port Tender")]
     PortTender = 53,
+    #[serde(rename = "Anti-Pollution Equipment")]
     AntiPollutionEquipment = 54,
+    #[serde(rename = "Law Enforcement")]
     LawEnforcement = 55,
-    // Spare 56-57
+    Spare = 56,
+    #[serde(rename = "Medical Transport")]
     MedicalTransport = 58,
+    /// Non-combatant ship according to RR Resolution No. 18
+    #[serde(rename = "Non-combatant Ship")]
     NoncombatantShip = 59,
     Passenger = 60,
     // More passenger types 61-69
@@ -157,7 +193,8 @@ impl ShipType {
     pub fn from_bits(bits: u8) -> Self {
         match bits {
             0 => Self::NotAvailable,
-            20 => Self::WingInGround,
+            1..=19 => Self::Reserved,
+            20..=29 => Self::WingInGround,
             30 => Self::Fishing,
             31 => Self::Towing,
             32 => Self::TowingLarge,
@@ -166,19 +203,21 @@ impl ShipType {
             35 => Self::MilitaryOps,
             36 => Self::Sailing,
             37 => Self::PleasureCraft,
-            40 => Self::HighSpeedCraft,
+            38..=39 => Self::Reserved,
+            40..=49 => Self::HighSpeedCraft,
             50 => Self::PilotVessel,
             51 => Self::SearchAndRescue,
             52 => Self::Tug,
             53 => Self::PortTender,
             54 => Self::AntiPollutionEquipment,
             55 => Self::LawEnforcement,
+            56..=57 => Self::Spare,
             58 => Self::MedicalTransport,
             59 => Self::NoncombatantShip,
-            60 => Self::Passenger,
-            70 => Self::Cargo,
-            80 => Self::Tanker,
-            90 => Self::Other,
+            60..=69 => Self::Passenger,
+            70..=79 => Self::Cargo,
+            80..=89 => Self::Tanker,
+            90..=99 => Self::Other,
             _ => Self::NotAvailable,
         }
     }
@@ -209,68 +248,98 @@ impl InlandLoadedType {
 #[repr(u8)]
 pub enum NavAid {
     /// Default, Type of AtoN not specified
+    #[serde(rename = "Default")]
     NotSpecified = 0,
     /// Reference point
+    #[serde(rename = "Reference point")]
     ReferencePoint = 1,
     /// RACON (radar transponder marking a navigation hazard)
+    #[serde(rename = "RACON")]
     Racon = 2,
     /// Fixed structure off shore, such as oil platforms, wind farms
+    #[serde(rename = "Fixed structure")]
     FixedStructure = 3,
     /// Spare, Reserved for future use
     Spare = 4,
     /// Light, without sectors
     Light = 5,
     /// Light, with sectors
+    #[serde(rename = "Light with sectors")]
     LightWithSectors = 6,
     /// Leading Light Front
+    #[serde(rename = "Leading Light Front")]
     LeadingLightFront = 7,
     /// Leading Light Rear
+    #[serde(rename = "Leading Light Rear")]
     LeadingLightRear = 8,
     /// Beacon, Cardinal N
+    #[serde(rename = "Beacon, Cardinal N")]
     BeaconCardinalN = 9,
     /// Beacon, Cardinal E
+    #[serde(rename = "Beacon, Cardinal E")]
     BeaconCardinalE = 10,
     /// Beacon, Cardinal S
+    #[serde(rename = "Beacon, Cardinal S")]
     BeaconCardinalS = 11,
     /// Beacon, Cardinal W
+    #[serde(rename = "Beacon, Cardinal W")]
     BeaconCardinalW = 12,
     /// Beacon, Port hand
+    #[serde(rename = "Beacon, Port hand")]
     BeaconPortHand = 13,
     /// Beacon, Starboard hand
+    #[serde(rename = "Beacon, Starboard hand")]
     BeaconStarboardHand = 14,
     /// Beacon, Preferred Channel port hand
+    #[serde(rename = "Beacon, Preferred Channel port hand")]
     BeaconPreferredChannelPortHand = 15,
     /// Beacon, Preferred Channel starboard hand
+    #[serde(rename = "Beacon, Preferred Channel starboard hand")]
     BeaconPreferredChannelStarboardHand = 16,
     /// Beacon, Isolated danger
+    #[serde(rename = "Beacon, Isolated danger")]
     BeaconIsolatedDanger = 17,
     /// Beacon, Safe water
+    #[serde(rename = "Beacon, Safe water")]
     BeaconSafeWater = 18,
     /// Beacon, Special mark
+    #[serde(rename = "Beacon, Special mark")]
     BeaconSpecialMark = 19,
     /// Cardinal Mark N
+    #[serde(rename = "Cardinal Mark N")]
     CardinalMarkN = 20,
     /// Cardinal Mark E
+    #[serde(rename = "Cardinal Mark E")]
     CardinalMarkE = 21,
     /// Cardinal Mark S
+    #[serde(rename = "Cardinal Mark S")]
     CardinalMarkS = 22,
     /// Cardinal Mark W
+    #[serde(rename = "Cardinal Mark W")]
     CardinalMarkW = 23,
     /// Port hand Mark
+    #[serde(rename = "Port hand Mark")]
     PortHandMark = 24,
     /// Starboard hand Mark
+    #[serde(rename = "Starboard hand Mark")]
     StarboardHandMark = 25,
     /// Preferred Channel Port hand
+    #[serde(rename = "Preferred Channel Port hand")]
     PreferredChannelPortHand = 26,
     /// Preferred Channel Starboard hand
+    #[serde(rename = "Preferred Channel Starboard hand")]
     PreferredChannelStarboardHand = 27,
     /// Isolated danger
+    #[serde(rename = "Isolated danger")]
     IsolatedDanger = 28,
     /// Safe Water
+    #[serde(rename = "Safe Water")]
     SafeWater = 29,
     /// Special Mark
+    #[serde(rename = "Special Mark")]
     SpecialMark = 30,
     /// Light Vessel / LANBY / Rigs
+    #[serde(rename = "Light Vessel")]
     LightVessel = 31,
 }
 
