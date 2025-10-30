@@ -1,4 +1,4 @@
-use rs162::sources::TimestampedNmeaTcpSource;
+use rs162::{decode::mmsi::MmsiInfo, sources::TimestampedNmeaTcpSource};
 use serde_json::json;
 use std::env;
 
@@ -39,7 +39,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     let output = json!({
                         "timestamp": timestamped_msg.timestamp,
                         "serial": timestamped_msg.serial,
-                        "message": ais_msg
+                        "message": ais_msg,
+                        "mmsi_info": MmsiInfo::from_message(&ais_msg).ok()
                     });
                     println!("{}", serde_json::to_string(&output)?);
                 }

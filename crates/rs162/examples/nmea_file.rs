@@ -1,4 +1,5 @@
-use rs162::sources::nmea::NmeaFileSource;
+use rs162::{decode::mmsi::MmsiInfo, sources::nmea::NmeaFileSource};
+use serde_json::json;
 use std::env;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -18,7 +19,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     for result in NmeaFileSource::new(filename)? {
         match result {
             Ok(message) => {
-                let json = serde_json::to_string(&message)?;
+                let output = json!({
+                    "message": message,
+                    "mmsi_info": MmsiInfo::from_message(&message).ok()
+                });
+                let json = serde_json::to_string(&output)?;
                 println!("{}", json);
             }
             Err(e) => eprintln!("Parse error: {}", e),

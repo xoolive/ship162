@@ -109,7 +109,7 @@ cargo run --example nmea_file
 # See examples/nmea_tcp.rs for live AIS data processing
 # Connects to Norwegian Coastal Administration's free AIS feed
 cargo run --release --example nmea_tcp -- 153.44.253.27:5631 | \
-  jq -c '.message + {timestamp: (.timestamp | strftime("%Y-%m-%dT%H:%M:%SZ"))}'
+  jq -c '.message + .mmsi_info + {timestamp: (.timestamp | strftime("%Y-%m-%dT%H:%M:%SZ"))}'
 ```
 
 ### Demodulating from I/Q Samples
@@ -117,7 +117,7 @@ cargo run --release --example nmea_tcp -- 153.44.253.27:5631 | \
 ```sh
 # See examples/iqfile.rs for processing I/Q sample files
 cargo run --release --example iqfile | \
-  jq -c '.message + {timestamp: (.timestamp | strftime("%Y-%m-%dT%H:%M:%SZ"))}'
+  jq -c '.message + .mmsi_info + {timestamp: (.timestamp | strftime("%Y-%m-%dT%H:%M:%SZ"))}'
 ```
 
 ## Technical Standards

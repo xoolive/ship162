@@ -8,7 +8,9 @@
 pub mod iqfile;
 pub mod nmea;
 pub mod nmea_ts;
+pub mod rtlsdr;
 
 pub use iqfile::IqFileSource;
 pub use nmea::NmeaFileSource;
 pub use nmea_ts::TimestampedNmeaTcpSource;
+pub use rtlsdr::{RtlSdrConfig, RtlSdrReceiver};

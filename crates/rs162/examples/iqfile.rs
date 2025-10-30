@@ -1,4 +1,7 @@
-use rs162::sources::iqfile::{IqFileFormat, IqFileSource};
+use rs162::{
+    decode::mmsi::MmsiInfo,
+    sources::iqfile::{IqFileFormat, IqFileSource},
+};
 use serde_json::json;
 use std::env;
 
@@ -24,7 +27,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         "signal_level": msg.signal_level,
                         "timestamp": msg.timestamp,
                         "channel": msg.channel,
-                        "message": ais_msg
+                        "message": ais_msg,
+                        "mmsi_info": MmsiInfo::from_message(&ais_msg).ok()
                     });
                     println!("{}", serde_json::to_string(&output)?);
                 }
