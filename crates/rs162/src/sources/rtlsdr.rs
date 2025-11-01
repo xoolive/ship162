@@ -13,6 +13,7 @@ use std::sync::mpsc as mpsc_sync;
 use std::task::{Context, Poll};
 use std::thread;
 use tokio::sync::mpsc as mpsc_tokio;
+use tracing::error;
 
 /// Configuration for RTL-SDR AIS reception
 #[derive(Debug, Clone)]
@@ -54,12 +55,23 @@ impl RtlSdrConfig {
 ///
 /// fn main() -> Result<(), Box<dyn std::error::Error>> {
 ///     let mut receiver = RtlSdrReceiver::new()?;
-///     
+///
 ///     receiver.receive(|message| {
 ///         println!("AIS Message on channel {}: {} bytes",
 ///                  message.channel, message.bits.len());
 ///     })?;
-///     
+///     for msg in receiver {
+///         if let Some(ais_msg) = msg.decode() {
+///             let output = json!({
+///                 "signal_level": msg.signal_level,
+///                 "timestamp": msg.timestamp,
+///                 "channel": msg.channel,
+///                 "message": ais_msg,
+///                 "mmsi_info": MmsiInfo::from_message(&ais_msg).ok()
+///             });
+///             println!("{}", serde_json::to_string(&output).unwrap());
+///         }
+///     }
 ///     Ok(())
 /// }
 /// ```
@@ -176,6 +188,7 @@ pub struct AsyncRtlSdrReceiver {
     demodulator: AisDemodulator,
     sample_receiver: mpsc_tokio::Receiver<Vec<Complex<f32>>>,
     message_buffer: VecDeque<AisDemodulatedMessage>,
+    _handle: std::thread::JoinHandle<()>, // Keep handle to prevent thread from being dropped
 }
 
 impl AsyncRtlSdrReceiver {
@@ -185,10 +198,10 @@ impl AsyncRtlSdrReceiver {
 
     pub async fn with_config(config: RtlSdrConfig) -> Result<Self, Box<dyn std::error::Error>> {
         let demodulator = AisDemodulator::new(config.sample_rate);
-        let (tx, rx) = mpsc_tokio::channel::<Vec<Complex<f32>>>(8);
+        let (tx, rx) = mpsc_tokio::channel::<Vec<Complex<f32>>>(32);
 
         // Spawn blocking SDR reading thread
-        std::thread::spawn(move || {
+        let handle = std::thread::spawn(move || {
             let mut rtl = RtlSdr::open(config.device_index).expect("No such device");
             rtl.set_sample_rate(config.sample_rate)
                 .expect("Failed to set sample rate");
@@ -207,11 +220,16 @@ impl AsyncRtlSdrReceiver {
             rtl.reset_buffer().expect("Unable to reset buffer");
 
             loop {
-                if let Ok(bytes_read) = rtl.read_sync(&mut *buffer) {
-                    let samples = convert_samples_cu8(&buffer[..bytes_read]);
-                    if tx.blocking_send(samples).is_err() {
-                        println!("Async RTL-SDR receiver channel closed");
-                        return; // Stop reading if receiver is dropped
+                match rtl.read_sync(&mut *buffer) {
+                    Ok(bytes_read) => {
+                        let samples = convert_samples_cu8(&buffer[..bytes_read]);
+                        if tx.blocking_send(samples).is_err() {
+                            println!("Async RTL-SDR receiver channel closed");
+                            return; // Stop reading if receiver is dropped
+                        }
+                    }
+                    Err(err) => {
+                        error!("Error reading from RTL-SDR device: {:?}", err);
                     }
                 }
             }
@@ -221,6 +239,7 @@ impl AsyncRtlSdrReceiver {
             demodulator,
             sample_receiver: rx,
             message_buffer: VecDeque::new(),
+            _handle: handle,
         })
     }
 }
@@ -237,7 +256,10 @@ impl Stream for AsyncRtlSdrReceiver {
             Poll::Ready(Some(samples)) => {
                 let messages = self.demodulator.demodulate(&samples);
                 self.message_buffer.extend(messages);
-                Poll::Ready(self.message_buffer.pop_front())
+                match self.message_buffer.pop_front() {
+                    Some(msg) => Poll::Ready(Some(msg)),
+                    None => Poll::Pending,
+                }
             }
             Poll::Ready(None) => Poll::Ready(None),
             Poll::Pending => Poll::Pending,
