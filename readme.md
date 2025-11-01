@@ -120,6 +120,15 @@ cargo run --release --example iqfile | \
   jq -c '.message + .mmsi_info + {timestamp: (.timestamp | strftime("%Y-%m-%dT%H:%M:%SZ"))}'
 ```
 
+### Demodulating from `rtl_tcp`
+
+```sh
+# See examples/rtltcp.rs
+rtl_tcp -a 127.0.0.1 -p 1234 -f 162M -s 288k -g 49.6
+cargo run --release --example rtltcp | \
+  jq -c '.message + .mmsi_info + {timestamp: (.timestamp | strftime("%Y-%m-%dT%H:%M:%SZ"))}'
+```
+
 ## Technical Standards
 
 The library implements:

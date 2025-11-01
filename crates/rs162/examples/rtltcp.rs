@@ -1,25 +1,19 @@
 use rs162::{
     decode::mmsi::MmsiInfo,
-    dsp::ais::AIS_SAMPLE_RATE_96K,
+    dsp::ais::AIS_SAMPLE_RATE_288K,
     sources::{IqFormat, IqSource},
 };
 use serde_json::json;
 use std::env;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let args: Vec<String> = env::args().collect();
+    let addr = env::args()
+        .nth(1)
+        .unwrap_or_else(|| "127.0.0.1:1234".to_string());
 
-    let filename = if args.len() == 1 {
-        "crates/rs162/data/ais_96k.bin"
-    } else if args.len() == 2 {
-        &args[1]
-    } else {
-        eprintln!("Usage: {} [iq_file]", args[0]);
-        eprintln!("If no file is specified, uses data/ais_96k.bin");
-        std::process::exit(1);
-    };
+    let receiver = IqSource::from_tcp(&addr, AIS_SAMPLE_RATE_288K, IqFormat::Cu8)?;
 
-    for result in IqSource::from_file(filename, AIS_SAMPLE_RATE_96K, IqFormat::Cu8)? {
+    for result in receiver {
         match result {
             Ok(msg) => {
                 if let Some(ais_msg) = msg.decode() {
@@ -30,10 +24,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         "message": ais_msg,
                         "mmsi_info": MmsiInfo::from_message(&ais_msg).ok()
                     });
-                    println!("{}", serde_json::to_string(&output)?);
+                    println!("{}", serde_json::to_string(&output).unwrap());
                 }
             }
-            Err(e) => eprintln!("Read error: {}", e),
+            Err(e) => {
+                eprintln!("stream error: {e}.\nhelp: try `rtl_tcp -a 127.0.0.1 -p 1234 -f 162000000 -s 288000 -g 49.6`");
+                break;
+            }
         }
     }
 

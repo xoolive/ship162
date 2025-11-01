@@ -29,7 +29,7 @@ name = "rs162"
 path = "src/lib.rs"
 
 [[example]]
-name = "iq_file"
-path = "examples/iq_file.rs"
-# Run with: cargo run --example iq_file -- file.iq [sample_rate] [format]
-# Example: cargo run --example iq_file -- samples.iq 48000 cu8
+name = "iqfile"
+path = "examples/iqfile.rs"
+# Run with: cargo run --example iqfile -- file.iq [sample_rate] [format]
+# Example: cargo run --example iqfile -- samples.iq 48000 cu8
