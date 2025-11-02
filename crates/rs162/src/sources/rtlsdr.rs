@@ -85,7 +85,7 @@ impl Read for RtlSdrReader {
                 }
                 Err(err) => {
                     // NOTE: `RtlsdrError: Into<Box<(dyn StdError + std::marker::Send + Sync + 'static)>>` is not satisfied
-                    return Err(io::Error::new(io::ErrorKind::Other, err.to_string()));
+                    return Err(io::Error::other(err.to_string()));
                 }
             }
         }
@@ -194,10 +194,7 @@ impl AsyncRtlSdrReader {
                                 }
                             }
                             Err(e) => {
-                                let _ = tx_data.blocking_send(Err(io::Error::new(
-                                    io::ErrorKind::Other,
-                                    e.to_string(),
-                                )));
+                                let _ = tx_data.blocking_send(Err(io::Error::other(e.to_string())));
                                 return;
                             }
                         }
