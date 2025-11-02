@@ -129,6 +129,21 @@ cargo run --release --example rtltcp | \
   jq -c '.message + .mmsi_info + {timestamp: (.timestamp | strftime("%Y-%m-%dT%H:%M:%SZ"))}'
 ```
 
+### Demodulating from RTL-SDR Devices
+
+> [!WARNING]  
+> Please read the following important note for Linux users: <https://github.com/ccostes/rtl-sdr-rs#uload-kernel-modules>
+
+```sh
+# See examples/rtlsdr.rs
+cargo run --release --example rtlsdr | \
+  jq -c '.message + .mmsi_info + {timestamp: (.timestamp | strftime("%Y-%m-%dT%H:%M:%SZ"))}'
+
+# See examples/rtlsdr_async.rs
+cargo run --release --example rtlsdr_async | \
+  jq -c '.message + .mmsi_info + {timestamp: (.timestamp | strftime("%Y-%m-%dT%H:%M:%SZ"))}'
+```
+
 ## Technical Standards
 
 The library implements:
