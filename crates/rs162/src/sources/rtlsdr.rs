@@ -2,18 +2,15 @@
 //!
 //! This module provides real-time AIS signal demodulation from RTL-SDR dongles.
 
-use crate::dsp::ais::{AisDemodulatedMessage, AisDemodulator, AIS_SAMPLE_RATE_288K};
-use crate::dsp::convert_samples_cu8;
+use crate::dsp::ais::{AisDemodulatedMessage, AIS_SAMPLE_RATE_288K};
+use crate::sources::iq::{AsyncIqSource, IqFormat, IqSource};
 use futures::Stream;
-use num_complex::Complex;
+use rtl_sdr_rs::error::RtlsdrError;
 use rtl_sdr_rs::{RtlSdr, TunerGain, DEFAULT_BUF_LENGTH};
-use std::collections::VecDeque;
+use std::io::{self, Read};
 use std::pin::Pin;
-use std::sync::mpsc as mpsc_sync;
 use std::task::{Context, Poll};
-use std::thread;
-use tokio::sync::mpsc as mpsc_tokio;
-use tracing::error;
+use tokio::io::{AsyncRead, ReadBuf};
 
 /// Configuration for RTL-SDR AIS reception
 #[derive(Debug, Clone)]
@@ -22,7 +19,7 @@ pub struct RtlSdrConfig {
     pub device_index: usize,
     /// Center frequency in Hz (e.g., 162_000_000 for AIS)
     pub frequency: u32,
-    /// Sample rate in Hz (must be 96000 for current demodulator)
+    /// Sample rate in Hz (must be 288000 = AIS_SAMPLE_RATE_288K for current demodulator)
     pub sample_rate: u32,
     /// Tuner gain (None for AGC, Some(gain) for manual)
     pub gain: Option<i32>,
@@ -47,223 +44,249 @@ impl RtlSdrConfig {
     }
 }
 
+struct RtlSdrReader {
+    rtl: RtlSdr,
+    buf: Vec<u8>,
+    pos: usize,
+    end: usize,
+}
+
+impl RtlSdrReader {
+    fn new(config: &RtlSdrConfig) -> Result<Self, RtlsdrError> {
+        let mut rtl = RtlSdr::open_with_index(config.device_index)?;
+        rtl.set_sample_rate(config.sample_rate)?;
+        rtl.set_center_freq(config.frequency)?;
+        match config.gain {
+            Some(gain) => rtl.set_tuner_gain(TunerGain::Manual(gain))?,
+            None => rtl.set_tuner_gain(TunerGain::Auto)?,
+        };
+        let _ = rtl.set_bias_tee(false);
+        rtl.reset_buffer()?;
+        Ok(Self {
+            rtl,
+            buf: vec![0u8; DEFAULT_BUF_LENGTH],
+            pos: 0,
+            end: 0,
+        })
+    }
+}
+
+impl Read for RtlSdrReader {
+    fn read(&mut self, dst: &mut [u8]) -> io::Result<usize> {
+        // NOTE: we do not use BufReader here to ensure device reads happen in large chunks.
+        if self.pos == self.end {
+            match self.rtl.read_sync(&mut self.buf[..]) {
+                Ok(n) => {
+                    self.pos = 0;
+                    self.end = n;
+                    if n == 0 {
+                        return Ok(0);
+                    }
+                }
+                Err(err) => {
+                    // NOTE: `RtlsdrError: Into<Box<(dyn StdError + std::marker::Send + Sync + 'static)>>` is not satisfied
+                    return Err(io::Error::new(io::ErrorKind::Other, err.to_string()));
+                }
+            }
+        }
+
+        let available = self.end - self.pos;
+        let to_copy = available.min(dst.len());
+        dst[..to_copy].copy_from_slice(&self.buf[self.pos..self.pos + to_copy]);
+        self.pos += to_copy;
+        Ok(to_copy)
+    }
+}
+
 /// RTL-SDR AIS receiver
 /// Example usage
 ///
 /// ```no_run
-/// use rs162::sources::rtlsdr::{RtlSdrReceiver, RtlSdrConfig};
+/// use rs162::sources::rtlsdr::RtlSdrReceiver;
 ///
 /// fn main() -> Result<(), Box<dyn std::error::Error>> {
 ///     let mut receiver = RtlSdrReceiver::new()?;
 ///
-///     receiver.receive(|message| {
-///         println!("AIS Message on channel {}: {} bytes",
-///                  message.channel, message.bits.len());
-///     })?;
-///     for msg in receiver {
-///         if let Some(ais_msg) = msg.decode() {
-///             let output = json!({
-///                 "signal_level": msg.signal_level,
-///                 "timestamp": msg.timestamp,
-///                 "channel": msg.channel,
-///                 "message": ais_msg,
-///                 "mmsi_info": MmsiInfo::from_message(&ais_msg).ok()
-///             });
-///             println!("{}", serde_json::to_string(&output).unwrap());
+///     for item in receiver {
+///         match item {
+///             Ok(msg) => {
+///                 println!("AIS Message on channel {}: {} bits", msg.channel, msg.bits.len());
+///             }
+///             Err(e) => {
+///                 eprintln!("Receiver error: {e}");
+///             }
 ///         }
 ///     }
+///
 ///     Ok(())
 /// }
 /// ```
 pub struct RtlSdrReceiver {
-    demodulator: AisDemodulator,
-    sample_receiver: mpsc_sync::Receiver<Vec<Complex<f32>>>,
-    message_buffer: VecDeque<AisDemodulatedMessage>,
-    _handle: thread::JoinHandle<()>, // Keep handle to prevent thread from being dropped
+    inner: IqSource<RtlSdrReader>,
 }
 
 impl RtlSdrReceiver {
     /// Create a new RTL-SDR receiver with default configuration
-    pub fn new() -> Result<Self, Box<dyn std::error::Error>> {
+    pub fn new() -> Result<Self, RtlsdrError> {
         Self::with_config(RtlSdrConfig::default())
     }
 
     /// Create a new RTL-SDR receiver with custom configuration
-    pub fn with_config(config: RtlSdrConfig) -> Result<Self, Box<dyn std::error::Error>> {
-        let demodulator = AisDemodulator::new(config.sample_rate);
-        let (tx, rx) = mpsc_sync::channel();
-
-        // Spawn RTL-SDR reading thread
-        let handle = thread::spawn(move || {
-            let mut rtl = RtlSdr::open(config.device_index).expect("No such device");
-
-            rtl.set_sample_rate(config.sample_rate)
-                .expect("Failed to set sample rate");
-            rtl.set_center_freq(config.frequency)
-                .expect("Failed to set frequency");
-            match config.gain {
-                Some(gain) => rtl
-                    .set_tuner_gain(TunerGain::Manual(gain))
-                    .expect("Failed to set gain"),
-                None => rtl
-                    .set_tuner_gain(TunerGain::Auto)
-                    .expect("Failed to set automatic gain"),
-            };
-
-            // Reset bias tee (if supported)
-            let _ = rtl.set_bias_tee(false);
-
-            // Create sample buffer
-            let mut buffer = Box::new([0u8; DEFAULT_BUF_LENGTH]);
-
-            rtl.reset_buffer().expect("Unable to reset buffer");
-
-            loop {
-                if let Ok(bytes_read) = rtl.read_sync(&mut *buffer) {
-                    // Convert samples and update stats
-                    let samples = convert_samples_cu8(&buffer[..bytes_read]);
-
-                    if tx.send(samples).is_err() {
-                        return; // Stop reading if receiver is dropped
-                    }
-                }
-            }
-        });
-
-        Ok(Self {
-            demodulator,
-            sample_receiver: rx,
-            message_buffer: VecDeque::new(),
-            _handle: handle,
-        })
-    }
-
-    /// Get the next AIS message
-    fn next_message(&mut self) -> Option<AisDemodulatedMessage> {
-        // Return buffered message if available
-        if let Some(msg) = self.message_buffer.pop_front() {
-            return Some(msg);
-        }
-
-        // Process incoming samples
-        loop {
-            match self.sample_receiver.try_recv() {
-                Ok(samples) => {
-                    let messages = self.demodulator.demodulate(&samples);
-
-                    // Add all messages to buffer
-                    for msg in messages {
-                        self.message_buffer.push_back(msg);
-                    }
-
-                    // Return first message if any
-                    if let Some(msg) = self.message_buffer.pop_front() {
-                        return Some(msg);
-                    }
-                    // Continue processing if no messages were found
-                }
-                Err(mpsc_sync::TryRecvError::Empty) => {
-                    // No new samples available yet, try again
-                    std::thread::sleep(std::time::Duration::from_millis(1));
-                    continue;
-                }
-                Err(mpsc_sync::TryRecvError::Disconnected) => {
-                    // RTL-SDR thread has stopped
-                    return None;
-                }
-            }
-        }
+    pub fn with_config(config: RtlSdrConfig) -> Result<Self, RtlsdrError> {
+        let reader = RtlSdrReader::new(&config)?;
+        let inner = IqSource::new(reader, config.sample_rate, IqFormat::Cu8);
+        Ok(Self { inner })
     }
 }
 
 impl Iterator for RtlSdrReceiver {
-    type Item = AisDemodulatedMessage;
+    type Item = Result<AisDemodulatedMessage, io::Error>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        self.next_message()
+        self.inner.next()
     }
 }
 
-pub struct AsyncRtlSdrReceiver {
-    demodulator: AisDemodulator,
-    sample_receiver: mpsc_tokio::Receiver<Vec<Complex<f32>>>,
-    message_buffer: VecDeque<AisDemodulatedMessage>,
-    _handle: std::thread::JoinHandle<()>, // Keep handle to prevent thread from being dropped
+/// Async reader over an internal blocking thread and mpsc channel.
+/// Maintains an eof flag to avoid repeated polls after end-of-stream.
+struct AsyncRtlSdrReader {
+    rx: tokio::sync::mpsc::Receiver<Result<Vec<u8>, io::Error>>,
+    buf: Vec<u8>,
+    pos: usize,
+    eof: bool,
+    _handle: std::thread::JoinHandle<()>,
 }
 
-impl AsyncRtlSdrReceiver {
-    pub async fn new() -> Result<Self, Box<dyn std::error::Error>> {
-        Self::with_config(RtlSdrConfig::default()).await
-    }
+impl AsyncRtlSdrReader {
+    fn new(config: &RtlSdrConfig) -> Result<Self, RtlsdrError> {
+        let (tx_data, rx) = tokio::sync::mpsc::channel::<Result<Vec<u8>, io::Error>>(32);
+        let (tx_init, rx_init) = std::sync::mpsc::channel::<Result<(), RtlsdrError>>();
+        let cfg = config.clone();
 
-    pub async fn with_config(config: RtlSdrConfig) -> Result<Self, Box<dyn std::error::Error>> {
-        let demodulator = AisDemodulator::new(config.sample_rate);
-        let (tx, rx) = mpsc_tokio::channel::<Vec<Complex<f32>>>(32);
-
-        // Spawn blocking SDR reading thread
         let handle = std::thread::spawn(move || {
-            let mut rtl = RtlSdr::open(config.device_index).expect("No such device");
-            rtl.set_sample_rate(config.sample_rate)
-                .expect("Failed to set sample rate");
-            rtl.set_center_freq(config.frequency)
-                .expect("Failed to set frequency");
-            match config.gain {
-                Some(gain) => rtl
-                    .set_tuner_gain(TunerGain::Manual(gain))
-                    .expect("Failed to set gain"),
-                None => rtl
-                    .set_tuner_gain(TunerGain::Auto)
-                    .expect("Failed to set automatic gain"),
-            };
+            let init_res = (|| -> Result<RtlSdr, RtlsdrError> {
+                let mut rtl = RtlSdr::open_with_index(cfg.device_index)?;
+                rtl.set_sample_rate(cfg.sample_rate)?;
+                rtl.set_center_freq(cfg.frequency)?;
+                match cfg.gain {
+                    Some(gain) => rtl.set_tuner_gain(TunerGain::Manual(gain))?,
+                    None => rtl.set_tuner_gain(TunerGain::Auto)?,
+                };
+                let _ = rtl.set_bias_tee(false);
+                rtl.reset_buffer()?;
+                Ok(rtl)
+            })();
 
-            let mut buffer = Box::new([0u8; DEFAULT_BUF_LENGTH]);
-            rtl.reset_buffer().expect("Unable to reset buffer");
-
-            loop {
-                match rtl.read_sync(&mut *buffer) {
-                    Ok(bytes_read) => {
-                        let samples = convert_samples_cu8(&buffer[..bytes_read]);
-                        if tx.blocking_send(samples).is_err() {
-                            println!("Async RTL-SDR receiver channel closed");
-                            return; // Stop reading if receiver is dropped
+            match init_res {
+                Ok(rtl) => {
+                    let _ = tx_init.send(Ok(()));
+                    let mut buffer = vec![0u8; DEFAULT_BUF_LENGTH];
+                    loop {
+                        match rtl.read_sync(&mut buffer) {
+                            Ok(bytes_read) => {
+                                if bytes_read == 0 {
+                                    let _ = tx_data.blocking_send(Ok(Vec::new()));
+                                    return;
+                                }
+                                let chunk = buffer[..bytes_read].to_vec();
+                                if tx_data.blocking_send(Ok(chunk)).is_err() {
+                                    return;
+                                }
+                            }
+                            Err(e) => {
+                                let _ = tx_data.blocking_send(Err(io::Error::new(
+                                    io::ErrorKind::Other,
+                                    e.to_string(),
+                                )));
+                                return;
+                            }
                         }
                     }
-                    Err(err) => {
-                        error!("Error reading from RTL-SDR device: {:?}", err);
-                    }
+                }
+                Err(e) => {
+                    let _ = tx_init.send(Err(e));
                 }
             }
         });
 
-        Ok(Self {
-            demodulator,
-            sample_receiver: rx,
-            message_buffer: VecDeque::new(),
-            _handle: handle,
-        })
+        match rx_init.recv() {
+            Ok(Ok(())) => Ok(Self {
+                rx,
+                buf: Vec::new(),
+                pos: 0,
+                eof: false,
+                _handle: handle,
+            }),
+            Ok(Err(e)) => Err(e),
+            Err(_) => Err(RtlsdrError::RtlsdrErr(
+                "Async RTL-SDR init failed".to_string(),
+            )),
+        }
+    }
+}
+
+impl AsyncRead for AsyncRtlSdrReader {
+    fn poll_read(
+        mut self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+        dst: &mut ReadBuf<'_>,
+    ) -> Poll<io::Result<()>> {
+        if self.eof {
+            return Poll::Ready(Ok(()));
+        }
+
+        if self.pos < self.buf.len() {
+            let remaining = self.buf.len() - self.pos;
+            let to_copy = remaining.min(dst.remaining());
+            dst.put_slice(&self.buf[self.pos..self.pos + to_copy]);
+            self.pos += to_copy;
+            return Poll::Ready(Ok(()));
+        }
+
+        match self.rx.poll_recv(cx) {
+            Poll::Ready(Some(Ok(chunk))) => {
+                if chunk.is_empty() {
+                    self.eof = true; // by device
+                    return Poll::Ready(Ok(()));
+                }
+                self.buf = chunk;
+                self.pos = 0;
+                let to_copy = self.buf.len().min(dst.remaining());
+                dst.put_slice(&self.buf[..to_copy]);
+                self.pos = to_copy;
+                Poll::Ready(Ok(()))
+            }
+            Poll::Ready(Some(Err(e))) => Poll::Ready(Err(e)),
+            Poll::Ready(None) => {
+                self.eof = true; // channel closed
+                Poll::Ready(Ok(()))
+            }
+            Poll::Pending => Poll::Pending,
+        }
+    }
+}
+
+pub struct AsyncRtlSdrReceiver {
+    inner: AsyncIqSource<AsyncRtlSdrReader>,
+}
+
+impl AsyncRtlSdrReceiver {
+    pub async fn new() -> Result<Self, RtlsdrError> {
+        Self::with_config(RtlSdrConfig::default()).await
+    }
+
+    pub async fn with_config(config: RtlSdrConfig) -> Result<Self, RtlsdrError> {
+        let reader = AsyncRtlSdrReader::new(&config)?;
+        let inner = AsyncIqSource::new(reader, config.sample_rate, IqFormat::Cu8);
+        Ok(Self { inner })
     }
 }
 
 impl Stream for AsyncRtlSdrReceiver {
-    type Item = AisDemodulatedMessage;
+    type Item = Result<AisDemodulatedMessage, io::Error>;
 
     fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
-        if let Some(msg) = self.message_buffer.pop_front() {
-            return Poll::Ready(Some(msg));
-        }
-
-        match self.sample_receiver.poll_recv(cx) {
-            Poll::Ready(Some(samples)) => {
-                let messages = self.demodulator.demodulate(&samples);
-                self.message_buffer.extend(messages);
-                match self.message_buffer.pop_front() {
-                    Some(msg) => Poll::Ready(Some(msg)),
-                    None => Poll::Pending,
-                }
-            }
-            Poll::Ready(None) => Poll::Ready(None),
-            Poll::Pending => Poll::Pending,
-        }
+        Pin::new(&mut self.inner).poll_next(cx)
     }
 }
 
