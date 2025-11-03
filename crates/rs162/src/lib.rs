@@ -22,6 +22,7 @@ pub mod prelude {
         SarAircraftPositionReport, ShipType, SingleSlotBinaryMessage, StaticDataReport,
         StationIntervals, StationType, TransmitMode, TurnRate, UtcDateInquiry,
     };
+    pub use crate::decode::mmsi::{MmsiInfo, MmsiType};
     pub use crate::decode::nmea::{MessageAssembler, NmeaAisMessage, NmeaError};
     pub use deku::DekuRead;
 }

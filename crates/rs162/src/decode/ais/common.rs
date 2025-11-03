@@ -1,3 +1,5 @@
+use std::fmt::Display;
+
 use serde::{Deserialize, Serialize};
 /// Navigation status values for AIS messages
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -53,6 +55,30 @@ impl NavigationStatus {
     }
     pub fn to_bits(self) -> u8 {
         self as u8
+    }
+}
+
+impl Display for NavigationStatus {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let description = match self {
+            NavigationStatus::UnderWayUsingEngine => "Under way",
+            NavigationStatus::AtAnchor => "At anchor",
+            NavigationStatus::NotUnderCommand => "No command",
+            NavigationStatus::RestrictedManoeuverability => "Restricted",
+            NavigationStatus::ConstrainedByHerDraught => "Constrained",
+            NavigationStatus::Moored => "Moored",
+            NavigationStatus::Aground => "Aground",
+            NavigationStatus::EngagedInFishing => "Fishing",
+            NavigationStatus::UnderWaySailing => "Sailing",
+            NavigationStatus::ReservedForFutureAmendment9 => "Reserved",
+            NavigationStatus::ReservedForFutureAmendment10 => "Reserved",
+            NavigationStatus::PowerDrivenVesselTowingAstern => "Towing astern",
+            NavigationStatus::PowerDrivenVesselPushingAhead => "Pushing ahead",
+            NavigationStatus::ReservedForFutureUse13 => "Reserved",
+            NavigationStatus::AisSartIsActive => "AIS-SART",
+            NavigationStatus::Undefined => "Undefined",
+        };
+        write!(f, "{}", description)
     }
 }
 
@@ -187,6 +213,39 @@ pub enum ShipType {
     // More tanker types 81-89
     Other = 90,
     // More other types 91-99
+}
+
+impl Display for ShipType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let description = match self {
+            ShipType::NotAvailable => "N/A",
+            ShipType::Reserved => "Reserved",
+            ShipType::WingInGround => "Wing in Ground",
+            ShipType::Fishing => "Fishing",
+            ShipType::Towing => "Towing",
+            ShipType::TowingLarge => "Towing, large",
+            ShipType::DredgingOrUnderwaterOps => "Dredging or underwater operations",
+            ShipType::DivingOps => "Diving operations",
+            ShipType::MilitaryOps => "Military operations",
+            ShipType::Sailing => "Sailing",
+            ShipType::PleasureCraft => "Pleasure craft",
+            ShipType::HighSpeedCraft => "High Speed Craft",
+            ShipType::PilotVessel => "Pilot Vessel",
+            ShipType::SearchAndRescue => "Search and Rescue",
+            ShipType::Tug => "Tug",
+            ShipType::PortTender => "Port Tender",
+            ShipType::AntiPollutionEquipment => "Anti-Pollution Equipment",
+            ShipType::LawEnforcement => "Law Enforcement",
+            ShipType::Spare => "Spare",
+            ShipType::MedicalTransport => "Medical Transport",
+            ShipType::NoncombatantShip => "Non-combatant Ship",
+            ShipType::Passenger => "Passenger",
+            ShipType::Cargo => "Cargo",
+            ShipType::Tanker => "Tanker",
+            ShipType::Other => "Other",
+        };
+        write!(f, "{}", description)
+    }
 }
 
 impl ShipType {

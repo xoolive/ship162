@@ -66,7 +66,7 @@ fn country_from_mid(mid: u16) -> &'static Country {
     }
 }
 
-#[derive(Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum MmsiType {
     #[serde(rename = "Coast Station")]
     CoastStation,
@@ -82,12 +82,12 @@ pub enum MmsiType {
     StandardShipStation,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MmsiInfo {
-    mmsi: String,
-    mmsi_type: MmsiType,
+    pub mmsi: String,
+    pub mmsi_type: MmsiType,
     #[serde(flatten)]
-    country: Country,
+    pub country: Country,
 }
 
 impl MmsiInfo {

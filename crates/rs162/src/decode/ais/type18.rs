@@ -47,14 +47,14 @@ pub struct ClassBPositionReport {
         bits = "28",
         map = "|x: u32| -> Result<_, DekuError> { Ok(from_longitude(x)) }"
     )]
-    pub lon: f64,
+    pub longitude: f64,
 
     /// Latitude in degrees (signed)
     #[deku(
         bits = "27",
         map = "|x: u32| -> Result<_, DekuError> { Ok(from_latitude(x)) }"
     )]
-    pub lat: f64,
+    pub latitude: f64,
 
     /// Course over ground in 0.1 degrees
     #[deku(
@@ -118,8 +118,8 @@ impl ClassBPositionReport {
             "reserved_1": self.reserved_1,
             "speed": self.speed,
             "accuracy": self.accuracy,
-            "lon": self.lon,
-            "lat": self.lat,
+            "longitude": self.longitude,
+            "latitude": self.latitude,
             "course": self.course,
             "heading": self.heading,
             "second": self.second,
@@ -162,8 +162,8 @@ mod tests {
         assert_eq!(msg.mmsi, 367430530);
         assert_eq!(msg.speed, 0.0);
         assert!(!msg.accuracy);
-        assert!((msg.lat - 37.79).abs() < 0.01);
-        assert!((msg.lon - (-122.27)).abs() < 0.01);
+        assert!((msg.latitude - 37.79).abs() < 0.01);
+        assert!((msg.longitude - (-122.27)).abs() < 0.01);
         assert_eq!(msg.course, 0.0);
         assert_eq!(msg.heading, 511);
         assert_eq!(msg.second, 55);

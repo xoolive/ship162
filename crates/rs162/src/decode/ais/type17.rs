@@ -50,14 +50,14 @@ pub struct DgnssBroadcastMessage {
         bits = "18",
         map = "|x: u32| -> Result<_, DekuError> { Ok(from_10th_minutes_longitude(x)) }"
     )]
-    pub lon: f64,
+    pub longitude: f64,
 
     /// Latitude in 1/10 minutes (signed)
     #[deku(
         bits = "17",
         map = "|x: u32| -> Result<_, DekuError> { Ok(from_10th_minutes_latitude(x)) }"
     )]
-    pub lat: f64,
+    pub latitude: f64,
 
     /// Spare bits (should be zero)
     #[deku(bits = "5", assert_eq = "0")]
@@ -76,8 +76,8 @@ impl DgnssBroadcastMessage {
             "msg_type": self.msg_type,
             "repeat": self.repeat,
             "mmsi": self.mmsi,
-            "lon": self.lon,
-            "lat": self.lat,
+            "longitude": self.longitude,
+            "latitude": self.latitude,
             "data": self.data,
         })
     }
@@ -120,8 +120,8 @@ mod tests {
         assert_eq!(msg.msg_type, 17);
         assert_eq!(msg.repeat, 0);
         assert_eq!(msg.mmsi, 2734450);
-        assert!((msg.lon - 1747.8).abs() < 0.1);
-        assert!((msg.lat - 3599.2).abs() < 0.1);
+        assert!((msg.longitude - 1747.8).abs() < 0.1);
+        assert!((msg.latitude - 3599.2).abs() < 0.1);
 
         // Verify data content
         assert!(!msg.data.is_empty());
@@ -134,8 +134,8 @@ mod tests {
         assert_eq!(msg.msg_type, 17);
         assert_eq!(msg.repeat, 0);
         assert_eq!(msg.mmsi, 4310602);
-        assert!((msg.lat - 2058.2).abs() < 0.1);
-        assert!((msg.lon - 8029.0).abs() < 0.1);
+        assert!((msg.latitude - 2058.2).abs() < 0.1);
+        assert!((msg.longitude - 8029.0).abs() < 0.1);
 
         // Verify data content
         assert!(!msg.data.is_empty());

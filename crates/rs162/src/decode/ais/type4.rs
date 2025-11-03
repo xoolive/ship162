@@ -65,14 +65,14 @@ pub struct BaseStationTimeReport {
         bits = "28",
         map = "|x: u32| -> Result<_, DekuError> { Ok(from_longitude(x)) }"
     )]
-    pub lon: f64,
+    pub longitude: f64,
 
     /// Latitude in degrees (signed)
     #[deku(
         bits = "27",
         map = "|x: u32| -> Result<_, DekuError> { Ok(from_latitude(x)) }"
     )]
-    pub lat: f64,
+    pub latitude: f64,
 
     /// Electronic Position Fixing Device type
     #[deku(
@@ -109,8 +109,8 @@ impl BaseStationTimeReport {
             "minute": self.minute,
             "second": self.second,
             "accuracy": self.accuracy,
-            "lon": self.lon,
-            "lat": self.lat,
+            "longitude": self.longitude,
+            "latitude": self.latitude,
             "epfd": self.epfd as u8,
             "raim": self.raim,
             "radio": self.radio,
@@ -140,8 +140,8 @@ mod tests {
     fn test_msg_type_4_a() {
         let msg = decode("!AIVDM,1,1,,A,403OviQuMGCqWrRO9>E6fE700@GO,0*4D");
 
-        assert!((msg.lon - (-76.352362)).abs() < 0.000001);
-        assert!((msg.lat - 36.883767).abs() < 0.000001);
+        assert!((msg.longitude - (-76.352362)).abs() < 0.000001);
+        assert!((msg.latitude - 36.883767).abs() < 0.000001);
         assert!(msg.accuracy);
         assert_eq!(msg.year, 2007);
         assert_eq!(msg.month, 5);
@@ -154,8 +154,8 @@ mod tests {
     fn test_msg_type_4_b() {
         let msg = decode("!AIVDM,1,1,,B,403OtVAv>lba;o?Ia`E`4G?02H6k,0*44");
 
-        assert!((msg.lon - (-122.4648)).abs() < 0.0001);
-        assert!((msg.lat - 37.7943).abs() < 0.0001);
+        assert!((msg.longitude - (-122.4648)).abs() < 0.0001);
+        assert!((msg.latitude - 37.7943).abs() < 0.0001);
         assert_eq!(msg.mmsi, 3669145);
         assert!(msg.accuracy);
         assert_eq!(msg.year, 2019);
@@ -172,8 +172,8 @@ mod tests {
     fn test_msg_type_11() {
         let msg = decode("!AIVDM,1,1,,B,;4R33:1uUK2F`q?mOt@@GoQ00000,0*5D");
 
-        assert!((msg.lon - (-94.4077)).abs() < 0.0001);
-        assert!((msg.lat - 28.4091).abs() < 0.0001);
+        assert!((msg.longitude - (-94.4077)).abs() < 0.0001);
+        assert!((msg.latitude - 28.4091).abs() < 0.0001);
         assert!(msg.accuracy);
         assert_eq!(msg.msg_type, 11);
         assert_eq!(msg.year, 2009);

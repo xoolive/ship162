@@ -27,9 +27,3 @@ tempfile = "3.0"
 [lib]
 name = "rs162"
 path = "src/lib.rs"
-
-[[example]]
-name = "iqfile"
-path = "examples/iqfile.rs"
-# Run with: cargo run --example iqfile -- file.iq [sample_rate] [format]
-# Example: cargo run --example iqfile -- samples.iq 48000 cu8
