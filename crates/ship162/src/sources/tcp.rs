@@ -1,20 +1,19 @@
 use anyhow::Result;
 use rs162::sources::nmea_ts::AsyncTimestampedNmeaTcpSource;
-use std::sync::Arc;
-use tokio::sync::Mutex;
+use tokio::sync::mpsc::Sender;
 use tracing::info;
 
-use crate::state::AppState;
+use crate::sources::TimedMessage;
 
 pub struct TcpSource {
+    tx: Sender<TimedMessage>,
     host: String,
     port: u16,
-    state: Arc<Mutex<AppState>>,
 }
 
 impl TcpSource {
-    pub fn new(host: String, port: u16, state: Arc<Mutex<AppState>>) -> Self {
-        Self { host, port, state }
+    pub fn new(tx: Sender<TimedMessage>, host: String, port: u16) -> Self {
+        Self { tx, host, port }
     }
 
     pub async fn run(&self) -> Result<()> {
@@ -39,8 +38,14 @@ impl TcpSource {
 
         while let Some(line) = source.next().await {
             if let Ok(sentence) = line {
-                let state = self.state.lock().await;
-                super::process_sentence(state, sentence).await;
+                if let Some(message) = sentence.decode() {
+                    let sentence = super::TimedMessage {
+                        timestamp: sentence.timestamp,
+                        signal_level: None,
+                        message,
+                    };
+                    self.tx.send(sentence).await?;
+                }
             }
         }
 
