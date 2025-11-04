@@ -39,10 +39,10 @@ fn render_table(frame: &mut Frame, area: Rect, state: &AppState) {
         "speed",
         "course",
         "heading",
-        "dimension",
+        "dim.",
         "destination",
         "count",
-        "last update",
+        "last",
     ])
     .style(
         Style::default()
