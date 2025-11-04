@@ -43,6 +43,7 @@ impl TcpSource {
                         timestamp: sentence.timestamp,
                         signal_level: None,
                         message,
+                        mmsi_info: None,
                     };
                     self.tx.send(sentence).await?;
                 }

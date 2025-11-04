@@ -233,9 +233,9 @@ async fn main() -> Result<()> {
     // Use tokio::select! to handle both message processing and UI completion
     tokio::select! {
         _ = async {
-            while let Some(message) = rx.recv().await {
+            while let Some(mut message) = rx.recv().await {
                 let state_guard = state.lock().await;
-                sources::process_sentence(state_guard, &message).await;
+                sources::process_sentence(state_guard, &mut message).await;
                 if let Ok(json) = serde_json::to_string(&message) {
                     if let Some(file) = &mut file {
                         let _ = file.write_all(json.as_bytes()).await;

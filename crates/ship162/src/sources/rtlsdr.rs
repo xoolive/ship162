@@ -28,6 +28,7 @@ impl RtlSdrSource {
                         timestamp: msg.timestamp,
                         signal_level: Some(msg.signal_level),
                         message: ais_msg,
+                        mmsi_info: None,
                     };
                     self.tx.send(sentence).await?;
                 }

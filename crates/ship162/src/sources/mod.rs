@@ -72,13 +72,18 @@ impl FromStr for Source {
 #[derive(Debug, Serialize)]
 pub struct TimedMessage {
     pub timestamp: u64,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub signal_level: Option<f32>,
+    #[serde(flatten)]
     pub message: Message,
+    #[serde(flatten)]
+    pub mmsi_info: Option<MmsiInfo>,
 }
 
-pub async fn process_sentence(mut state: MutexGuard<'_, AppState>, sentence: &TimedMessage) {
+pub async fn process_sentence(mut state: MutexGuard<'_, AppState>, sentence: &mut TimedMessage) {
     let message = &sentence.message;
     let vessel = if let Ok(mmsi_info) = MmsiInfo::from_message(message) {
+        sentence.mmsi_info = Some(mmsi_info.clone());
         state.update_vessel(mmsi_info)
     } else {
         error!("Failed to extract MMSI information: {:?}", message);
