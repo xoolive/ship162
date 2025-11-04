@@ -99,10 +99,13 @@ async fn main() -> Result<()> {
     let state = Arc::new(Mutex::new(AppState::new()));
 
     let (tx, mut rx) = tokio::sync::mpsc::channel(10);
+    // Add a shutdown signal channel
+    let (shutdown_tx, _shutdown_rx) = tokio::sync::broadcast::channel::<()>(1);
 
     let mut src_handles = vec![];
     for source in options.sources {
         let tcp_clone = tx.clone();
+        let mut shutdown_rx = shutdown_tx.subscribe();
         let handle = match source.address {
             sources::Address::Tcp(address) => tokio::spawn(async move {
                 match address {
@@ -121,16 +124,30 @@ async fn main() -> Result<()> {
                             return;
                         }
                         let source = TcpSource::new(tcp_clone, host, port);
-                        if let Err(e) = source.run().await {
-                            eprintln!("TCP source error: {}", e);
+                        tokio::select! {
+                            result = source.run() => {
+                                if let Err(e) = result {
+                                    eprintln!("TCP source error: {}", e);
+                                }
+                            }
+                            _ = shutdown_rx.recv() => {
+                                // Silent shutdown
+                            }
                         }
                     }
                     sources::AddressPath::Long(addr) => {
                         let host = addr.host;
                         let port = addr.port;
                         let source = TcpSource::new(tcp_clone, host, port);
-                        if let Err(e) = source.run().await {
-                            eprintln!("TCP source error: {}", e);
+                        tokio::select! {
+                            result = source.run() => {
+                                if let Err(e) = result {
+                                    eprintln!("TCP source error: {}", e);
+                                }
+                            }
+                            _ = shutdown_rx.recv() => {
+                                // Silent shutdown
+                            }
                         }
                     }
                 }
@@ -139,8 +156,15 @@ async fn main() -> Result<()> {
                 let rtl_clone = tx.clone();
                 tokio::spawn(async move {
                     let source = RtlSdrSource::new(rtl_clone, Default::default());
-                    if let Err(e) = source.run().await {
-                        eprintln!("RTL-SDR source error: {}", e);
+                    tokio::select! {
+                        result = source.run() => {
+                            if let Err(e) = result {
+                                eprintln!("RTL-SDR source error: {}", e);
+                            }
+                        }
+                        _ = shutdown_rx.recv() => {
+                            // Silent shutdown
+                        }
                     }
                 })
             }
@@ -155,7 +179,7 @@ async fn main() -> Result<()> {
     let terminal_state = state.clone();
 
     // Main application loop
-    tokio::spawn(async move {
+    let ui_handle = tokio::spawn(async move {
         loop {
             // Lock state for rendering
             let state_guard = terminal_state.lock().await;
@@ -164,8 +188,12 @@ async fn main() -> Result<()> {
 
             match events.next().await? {
                 Event::Key(key) => match key.code {
-                    KeyCode::Char('q') | KeyCode::Char('Q') => break,
-                    KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => break,
+                    KeyCode::Char('q') | KeyCode::Char('Q') => {
+                        break;
+                    }
+                    KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                        break;
+                    }
                     KeyCode::Char('j') | KeyCode::Down => {
                         let max_visible = terminal.size()?.height.saturating_sub(5) as usize;
                         let mut state_guard = terminal_state.lock().await;
@@ -202,15 +230,30 @@ async fn main() -> Result<()> {
         None
     };
 
-    while let Some(message) = rx.recv().await {
-        let state_guard = state.lock().await;
-        sources::process_sentence(state_guard, &message).await;
-        if let Ok(json) = serde_json::to_string(&message) {
-            if let Some(file) = &mut file {
-                file.write_all(json.as_bytes()).await?;
-                file.write_all(b"\n").await?;
+    // Use tokio::select! to handle both message processing and UI completion
+    tokio::select! {
+        _ = async {
+            while let Some(message) = rx.recv().await {
+                let state_guard = state.lock().await;
+                sources::process_sentence(state_guard, &message).await;
+                if let Ok(json) = serde_json::to_string(&message) {
+                    if let Some(file) = &mut file {
+                        let _ = file.write_all(json.as_bytes()).await;
+                        let _ = file.write_all(b"\n").await;
+                    }
+                }
             }
+        } => {},
+        _ = ui_handle => {
+            // UI has exited, send shutdown signal
+            let _ = shutdown_tx.send(());
         }
+    }
+
+    // Wait for all source tasks to finish (with timeout)
+    let timeout = tokio::time::Duration::from_secs(2);
+    for handle in src_handles {
+        let _ = tokio::time::timeout(timeout, handle).await;
     }
 
     Ok(())

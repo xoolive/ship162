@@ -53,30 +53,36 @@ impl EventHandler {
                       Some(Ok(evt)) => {
                         match evt {
                           crossterm::event::Event::Key(key) => {
-                            if key.kind == crossterm::event::KeyEventKind::Press {
-                              tx.send(Event::Key(key)).unwrap();
-                            }
+                            if key.kind == crossterm::event::KeyEventKind::Press
+                              && tx.send(Event::Key(key)).is_err() {
+                                break; // Channel closed, exit gracefully
+                              }
                           },
                           crossterm::event::Event::Resize(col,_) => {width = col},
                           crossterm::event::Event::Mouse(event) => {
-                            if event.kind == crossterm::event::MouseEventKind::ScrollUp {
-                              tx.send(Event::Key(KeyEvent::new(crossterm::event::KeyCode::Char('k'), event.modifiers))).unwrap();
-                            }
-                            if event.kind == crossterm::event::MouseEventKind::ScrollDown {
-                              tx.send(Event::Key(KeyEvent::new(crossterm::event::KeyCode::Char('j'), event.modifiers))).unwrap();
-                            }
+                            if event.kind == crossterm::event::MouseEventKind::ScrollUp
+                              && tx.send(Event::Key(KeyEvent::new(crossterm::event::KeyCode::Char('k'), event.modifiers))).is_err() {
+                                break;
+                              }
+                            if event.kind == crossterm::event::MouseEventKind::ScrollDown
+                              && tx.send(Event::Key(KeyEvent::new(crossterm::event::KeyCode::Char('j'), event.modifiers))).is_err() {
+                                break;
+                              }
                           },
                           _ => {},
                         }
                       }
                       Some(Err(_)) => {
-                        tx.send(Event::Error).unwrap();
+                        let _ = tx.send(Event::Error);
+                        break;
                       }
                       None => {},
                     }
                   },
                   _ = delay => {
-                       tx.send(Event::Tick(width)).unwrap_or(());
+                       if tx.send(Event::Tick(width)).is_err() {
+                         break; // Channel closed, exit gracefully
+                       }
                   },
                 }
             }
