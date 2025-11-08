@@ -18,6 +18,7 @@ use sources::tcp::TcpSource;
 
 use crate::sources::rtlsdr::RtlSdrSource;
 use crate::tui::{Event, EventHandler};
+use rs162::sources::rtlsdr::RtlSdrConfig;
 
 #[derive(Default, Deserialize, Parser)]
 #[command(
@@ -35,6 +36,10 @@ struct Options {
     /// logging file, use "-" for stdout (only in non-interactive mode)
     #[arg(short, long, value_name = "FILE")]
     log_file: Option<String>,
+
+    /// Prevent the computer sleeping when decoding is in progress
+    #[arg(long, default_value=None)]
+    prevent_sleep: bool,
 }
 
 #[tokio::main]
@@ -71,6 +76,9 @@ async fn main() -> Result<()> {
     if cli_options.log_file.is_some() {
         options.log_file = cli_options.log_file;
     }
+    if cli_options.prevent_sleep {
+        options.prevent_sleep = cli_options.prevent_sleep;
+    }
     options.sources.append(&mut cli_options.sources);
 
     // example: RUST_LOG=rs1090=DEBUG
@@ -92,6 +100,21 @@ async fn main() -> Result<()> {
             subscriber.init(); // no logging
         }
     }
+
+    let _awake = match options.prevent_sleep {
+        true => Some(
+            keepawake::Builder::default()
+                .display(false)
+                .idle(true)
+                .sleep(true)
+                .reason("ship162 decoding in progress")
+                .app_name("ship162")
+                .app_reverse_domain("io.github.ship162")
+                .create()?,
+        ),
+        false => None,
+    };
+
     // Initialize terminal
     let mut terminal = tui::init()?;
 
