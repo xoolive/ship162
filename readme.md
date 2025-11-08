@@ -13,6 +13,8 @@ The directions ambitioned by ship162 include:
 
 The ultimate goal is to create a complete maritime tracking solution that can receive raw radio signals and output structured AIS data, similar to what dump1090 does for aviation ADS-B messages.
 
+![ship162 TUI displaying real-time AIS messages](./docs/images/ship162.png)
+
 ## Features
 
 - **Complete AIS message support**: Handles all standard AIS message types (1-27)
