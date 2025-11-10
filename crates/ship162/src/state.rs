@@ -55,12 +55,16 @@ impl VesselState {
     }
 
     pub fn dimensions_str(&self) -> String {
-        match (self.to_bow, self.to_stern, self.to_port, self.to_starboard) {
-            (Some(bow), Some(stern), Some(port), Some(stbd)) => {
-                format!("{}x{}", bow + stern, port + stbd)
+        if let (Some(bow), Some(stern), Some(port), Some(stbd)) =
+            (self.to_bow, self.to_stern, self.to_port, self.to_starboard)
+        {
+            let length = bow + stern;
+            let width = port + stbd;
+            if length > 0 || width > 0 {
+                return format!("{}x{}", length, width);
             }
-            _ => "".to_string(),
         }
+        "".to_string()
     }
 }
 

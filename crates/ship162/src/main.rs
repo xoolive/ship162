@@ -18,7 +18,6 @@ use sources::tcp::TcpSource;
 
 use crate::sources::rtlsdr::RtlSdrSource;
 use crate::tui::{Event, EventHandler};
-use rs162::sources::rtlsdr::RtlSdrConfig;
 
 #[derive(Default, Deserialize, Parser)]
 #[command(

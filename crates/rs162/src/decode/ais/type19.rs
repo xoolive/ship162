@@ -1,7 +1,7 @@
 use deku::prelude::*;
 use serde::{Deserialize, Serialize};
 
-use super::common::{EpfdType, ShipType};
+use super::common::{EpfdType, ShipType, Timestamp};
 use super::converters::*;
 
 /// AIS Extended Class B CS Position Report (Type 19)
@@ -37,7 +37,7 @@ pub struct ExtendedClassBPositionReport {
         bits = "10",
         map = "|x: u16| -> Result<_, DekuError> { Ok(from_speed(x)) }"
     )]
-    pub speed: f32,
+    pub speed: Option<f32>,
 
     /// Position accuracy flag
     #[deku(bits = "1", map = "|x: u8| -> Result<_, DekuError> { Ok(x != 0) }")]
@@ -48,29 +48,35 @@ pub struct ExtendedClassBPositionReport {
         bits = "28",
         map = "|x: u32| -> Result<_, DekuError> { Ok(from_longitude(x)) }"
     )]
-    pub longitude: f64,
+    pub longitude: Option<f64>,
 
     /// Latitude in degrees (signed)
     #[deku(
         bits = "27",
         map = "|x: u32| -> Result<_, DekuError> { Ok(from_latitude(x)) }"
     )]
-    pub latitude: f64,
+    pub latitude: Option<f64>,
 
     /// Course over ground in 0.1 degrees
     #[deku(
         bits = "12",
         map = "|x: u16| -> Result<_, DekuError> { Ok(from_course(x)) }"
     )]
-    pub course: f32,
+    pub course: Option<f32>,
 
     /// True heading in degrees
-    #[deku(bits = "9")]
-    pub heading: u16,
+    #[deku(
+        bits = "9",
+        map = "|x: u16| -> Result<_, DekuError> { Ok(from_heading(x)) }"
+    )]
+    pub heading: Option<u16>,
 
-    /// Time stamp (0-59 seconds)
-    #[deku(bits = "6")]
-    pub second: u8,
+    /// Time stamp
+    #[deku(
+        bits = "6",
+        map = "|x: u8| -> Result<_, DekuError> { Ok(Timestamp::from_bits(x)) }"
+    )]
+    pub second: Timestamp,
 
     /// Reserved for regional applications
     #[deku(bits = "4")]
@@ -185,13 +191,13 @@ mod tests {
 
         assert_eq!(msg.msg_type, 19);
         assert_eq!(msg.mmsi, 367059850);
-        assert!((msg.speed - 8.7).abs() < 0.1);
+        assert!((msg.speed.unwrap() - 8.7).abs() < 0.1);
         assert!(!msg.accuracy);
-        assert!((msg.latitude - 29.543695).abs() < 0.000001);
-        assert!((msg.longitude - (-88.810394)).abs() < 0.00001);
-        assert!((msg.course - 335.9).abs() < 0.1);
-        assert_eq!(msg.heading, 511);
-        assert_eq!(msg.second, 46);
+        assert!((msg.latitude.unwrap() - 29.543695).abs() < 0.000001);
+        assert!((msg.longitude.unwrap() - (-88.810394)).abs() < 0.00001);
+        assert!((msg.course.unwrap() - 335.9).abs() < 0.1);
+        assert_eq!(msg.heading, None);
+        assert_eq!(msg.second, Timestamp::Second(46));
         assert_eq!(msg.shipname, "CAPT.J.RIMES");
         assert_eq!(msg.ship_type, ShipType::Cargo);
         assert_eq!(msg.to_bow, 5);
