@@ -449,7 +449,7 @@ mod tests {
         assert!((from_turn(20).unwrap() - expected_rot).abs() < 1e-6);
 
         let val = -20.0_f32;
-        let expected_rot = (val / 4.733).powi(2) * -1.0;
+        let expected_rot = -(val / 4.733).powi(2);
         assert!((from_turn(0xec).unwrap() - expected_rot).abs() < 1e-6);
 
         assert_eq!(from_turn(127), Some(720.0));
