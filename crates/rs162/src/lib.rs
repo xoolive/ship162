@@ -20,7 +20,7 @@ pub mod prelude {
         Interrogation, LongRangeAisBroadcastMessage, ManeuverIndicator, MultipleSlotBinaryMessage,
         NavAid, NavigationStatus, PositionReport, SafetyBroadcastMessage,
         SarAircraftPositionReport, ShipType, SingleSlotBinaryMessage, StaticDataReport,
-        StationIntervals, StationType, TransmitMode, TurnRate, UtcDateInquiry,
+        StationIntervals, StationType, TransmitMode, UtcDateInquiry,
     };
     pub use crate::decode::mmsi::{MmsiInfo, MmsiType};
     pub use crate::decode::nmea::{MessageAssembler, NmeaAisMessage, NmeaError};

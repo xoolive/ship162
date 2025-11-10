@@ -1,6 +1,7 @@
 use deku::prelude::*;
 use serde::{Deserialize, Serialize};
 
+use super::common::Timestamp;
 use super::converters::*;
 
 /// AIS Standard Class B CS Position Report (Type 18)
@@ -36,7 +37,7 @@ pub struct ClassBPositionReport {
         bits = "10",
         map = "|x: u16| -> Result<_, DekuError> { Ok(from_speed(x)) }"
     )]
-    pub speed: f32,
+    pub speed: Option<f32>,
 
     /// Position accuracy flag
     #[deku(bits = "1", map = "|x: u8| -> Result<_, DekuError> { Ok(x != 0) }")]
@@ -47,29 +48,35 @@ pub struct ClassBPositionReport {
         bits = "28",
         map = "|x: u32| -> Result<_, DekuError> { Ok(from_longitude(x)) }"
     )]
-    pub longitude: f64,
+    pub longitude: Option<f64>,
 
     /// Latitude in degrees (signed)
     #[deku(
         bits = "27",
         map = "|x: u32| -> Result<_, DekuError> { Ok(from_latitude(x)) }"
     )]
-    pub latitude: f64,
+    pub latitude: Option<f64>,
 
     /// Course over ground in 0.1 degrees
     #[deku(
         bits = "12",
         map = "|x: u16| -> Result<_, DekuError> { Ok(from_course(x)) }"
     )]
-    pub course: f32,
+    pub course: Option<f32>,
 
     /// True heading in degrees
-    #[deku(bits = "9")]
-    pub heading: u16,
+    #[deku(
+        bits = "9",
+        map = "|x: u16| -> Result<_, DekuError> { Ok(from_heading(x)) }"
+    )]
+    pub heading: Option<u16>,
 
-    /// Time stamp (0-59 seconds)
-    #[deku(bits = "6")]
-    pub second: u8,
+    /// Time stamp
+    #[deku(
+        bits = "6",
+        map = "|x: u8| -> Result<_, DekuError> { Ok(Timestamp::from_bits(x)) }"
+    )]
+    pub second: Timestamp,
 
     /// Reserved for regional applications
     #[deku(bits = "2")]
@@ -160,13 +167,13 @@ mod tests {
 
         assert_eq!(msg.msg_type, 18);
         assert_eq!(msg.mmsi, 367430530);
-        assert_eq!(msg.speed, 0.0);
+        assert_eq!(msg.speed, Some(0.0));
         assert!(!msg.accuracy);
-        assert!((msg.latitude - 37.79).abs() < 0.01);
-        assert!((msg.longitude - (-122.27)).abs() < 0.01);
-        assert_eq!(msg.course, 0.0);
-        assert_eq!(msg.heading, 511);
-        assert_eq!(msg.second, 55);
+        assert!((msg.latitude.unwrap() - 37.79).abs() < 0.01);
+        assert!((msg.longitude.unwrap() - (-122.27)).abs() < 0.01);
+        assert_eq!(msg.course, Some(0.0));
+        assert_eq!(msg.heading, None);
+        assert_eq!(msg.second, Timestamp::Second(55));
         assert_eq!(msg.reserved_2, 0);
         assert!(msg.cs);
         assert!(!msg.display);
@@ -181,8 +188,8 @@ mod tests {
     fn test_msg_type_18_speed() {
         let msg = decode("!AIVDO,1,1,,A,B5NJ;PP2aUl4ot5Isbl6GwsUkP06,0*35");
 
-        assert!((msg.speed - 67.8).abs() < 0.1);
-        assert!((msg.course - 10.1).abs() < 0.1);
+        assert!((msg.speed.unwrap() - 67.8).abs() < 0.1);
+        assert!((msg.course.unwrap() - 10.1).abs() < 0.1);
     }
 
     #[test]

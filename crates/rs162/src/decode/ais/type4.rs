@@ -32,29 +32,47 @@ pub struct BaseStationTimeReport {
     )]
     pub mmsi: u32,
 
-    /// Year (1-9999, 0 = N/A)
-    #[deku(bits = "14")]
-    pub year: u16,
+    /// Year (1-9999)
+    #[deku(
+        bits = "14",
+        map = "|x: u16| -> Result<_, DekuError> { Ok(from_year(x)) }"
+    )]
+    pub year: Option<u16>,
 
-    /// Month (1-12, 0 = N/A)
-    #[deku(bits = "4")]
-    pub month: u8,
+    /// Month (1-12)
+    #[deku(
+        bits = "4",
+        map = "|x: u8| -> Result<_, DekuError> { Ok(from_month(x)) }"
+    )]
+    pub month: Option<u8>,
 
-    /// Day (1-31, 0 = N/A)
-    #[deku(bits = "5")]
-    pub day: u8,
+    /// Day (1-31)
+    #[deku(
+        bits = "5",
+        map = "|x: u8| -> Result<_, DekuError> { Ok(from_day(x)) }"
+    )]
+    pub day: Option<u8>,
 
-    /// Hour (0-23, 24 = N/A)
-    #[deku(bits = "5")]
-    pub hour: u8,
+    /// Hour (0-23)
+    #[deku(
+        bits = "5",
+        map = "|x: u8| -> Result<_, DekuError> { Ok(from_hour(x)) }"
+    )]
+    pub hour: Option<u8>,
 
-    /// Minute (0-59, 60 = N/A)
-    #[deku(bits = "6")]
-    pub minute: u8,
+    /// Minute (0-59)
+    #[deku(
+        bits = "6",
+        map = "|x: u8| -> Result<_, DekuError> { Ok(from_minute(x)) }"
+    )]
+    pub minute: Option<u8>,
 
-    /// Second (0-59, 60 = N/A)
-    #[deku(bits = "6")]
-    pub second: u8,
+    /// Second (0-59)
+    #[deku(
+        bits = "6",
+        map = "|x: u8| -> Result<_, DekuError> { Ok(from_second(x)) }"
+    )]
+    pub second: Option<u8>,
 
     /// Position accuracy flag
     #[deku(bits = "1", map = "|x: u8| -> Result<_, DekuError> { Ok(x != 0) }")]
@@ -65,14 +83,14 @@ pub struct BaseStationTimeReport {
         bits = "28",
         map = "|x: u32| -> Result<_, DekuError> { Ok(from_longitude(x)) }"
     )]
-    pub longitude: f64,
+    pub longitude: Option<f64>,
 
     /// Latitude in degrees (signed)
     #[deku(
         bits = "27",
         map = "|x: u32| -> Result<_, DekuError> { Ok(from_latitude(x)) }"
     )]
-    pub latitude: f64,
+    pub latitude: Option<f64>,
 
     /// Electronic Position Fixing Device type
     #[deku(
@@ -140,30 +158,30 @@ mod tests {
     fn test_msg_type_4_a() {
         let msg = decode("!AIVDM,1,1,,A,403OviQuMGCqWrRO9>E6fE700@GO,0*4D");
 
-        assert!((msg.longitude - (-76.352362)).abs() < 0.000001);
-        assert!((msg.latitude - 36.883767).abs() < 0.000001);
+        assert!((msg.longitude.unwrap() - (-76.352362)).abs() < 0.000001);
+        assert!((msg.latitude.unwrap() - 36.883767).abs() < 0.000001);
         assert!(msg.accuracy);
-        assert_eq!(msg.year, 2007);
-        assert_eq!(msg.month, 5);
-        assert_eq!(msg.day, 14);
-        assert_eq!(msg.minute, 57);
-        assert_eq!(msg.second, 39);
+        assert_eq!(msg.year, Some(2007));
+        assert_eq!(msg.month, Some(5));
+        assert_eq!(msg.day, Some(14));
+        assert_eq!(msg.minute, Some(57));
+        assert_eq!(msg.second, Some(39));
     }
 
     #[test]
     fn test_msg_type_4_b() {
         let msg = decode("!AIVDM,1,1,,B,403OtVAv>lba;o?Ia`E`4G?02H6k,0*44");
 
-        assert!((msg.longitude - (-122.4648)).abs() < 0.0001);
-        assert!((msg.latitude - 37.7943).abs() < 0.0001);
+        assert!((msg.longitude.unwrap() - (-122.4648)).abs() < 0.0001);
+        assert!((msg.latitude.unwrap() - 37.7943).abs() < 0.0001);
         assert_eq!(msg.mmsi, 3669145);
         assert!(msg.accuracy);
-        assert_eq!(msg.year, 2019);
-        assert_eq!(msg.month, 11);
-        assert_eq!(msg.day, 9);
-        assert_eq!(msg.hour, 10);
-        assert_eq!(msg.minute, 41);
-        assert_eq!(msg.second, 11);
+        assert_eq!(msg.year, Some(2019));
+        assert_eq!(msg.month, Some(11));
+        assert_eq!(msg.day, Some(9));
+        assert_eq!(msg.hour, Some(10));
+        assert_eq!(msg.minute, Some(41));
+        assert_eq!(msg.second, Some(11));
         assert_eq!(msg.epfd, EpfdType::InternalGnss);
         assert_eq!(msg.epfd as u8, 15);
     }
@@ -172,16 +190,16 @@ mod tests {
     fn test_msg_type_11() {
         let msg = decode("!AIVDM,1,1,,B,;4R33:1uUK2F`q?mOt@@GoQ00000,0*5D");
 
-        assert!((msg.longitude - (-94.4077)).abs() < 0.0001);
-        assert!((msg.latitude - 28.4091).abs() < 0.0001);
+        assert!((msg.longitude.unwrap() - (-94.4077)).abs() < 0.0001);
+        assert!((msg.latitude.unwrap() - 28.4091).abs() < 0.0001);
         assert!(msg.accuracy);
         assert_eq!(msg.msg_type, 11);
-        assert_eq!(msg.year, 2009);
-        assert_eq!(msg.month, 5);
-        assert_eq!(msg.day, 22);
-        assert_eq!(msg.hour, 2);
-        assert_eq!(msg.minute, 22);
-        assert_eq!(msg.second, 40);
+        assert_eq!(msg.year, Some(2009));
+        assert_eq!(msg.month, Some(5));
+        assert_eq!(msg.day, Some(22));
+        assert_eq!(msg.hour, Some(2));
+        assert_eq!(msg.minute, Some(22));
+        assert_eq!(msg.second, Some(40));
     }
 
     #[test]
@@ -194,8 +212,8 @@ mod tests {
         assert_eq!(type11_msg.msg_type, 11);
 
         // Both should have valid timestamps
-        assert!(type4_msg.year > 0);
-        assert!(type11_msg.year > 0);
+        assert!(type4_msg.year.is_some());
+        assert!(type11_msg.year.is_some());
 
         // Both should serialize successfully
         assert!(type4_msg.to_json().is_ok());

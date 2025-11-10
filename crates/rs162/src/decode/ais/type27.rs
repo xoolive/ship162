@@ -49,22 +49,28 @@ pub struct LongRangeAisBroadcastMessage {
         bits = "18",
         map = "|x: u32| -> Result<_, DekuError> { Ok(from_longitude_600(x)) }"
     )]
-    pub longitude: f64,
+    pub longitude: Option<f64>,
 
     /// Latitude in 1/600 minutes (signed)
     #[deku(
         bits = "17",
         map = "|x: u32| -> Result<_, DekuError> { Ok(from_latitude_600(x)) }"
     )]
-    pub latitude: f64,
+    pub latitude: Option<f64>,
 
     /// Speed over ground in knots
-    #[deku(bits = "6")]
-    pub speed: u8,
+    #[deku(
+        bits = "6",
+        map = "|x: u8| -> Result<_, DekuError> { Ok(from_speed_longrange(x)) }"
+    )]
+    pub speed: Option<u8>,
 
     /// Course over ground in degrees
-    #[deku(bits = "9")]
-    pub course: u16,
+    #[deku(
+        bits = "9",
+        map = "|x: u16| -> Result<_, DekuError> { Ok(from_course_longrange(x)) }"
+    )]
+    pub course: Option<u16>,
 
     /// GNSS position status flag
     #[deku(bits = "1", map = "|x: u8| -> Result<_, DekuError> { Ok(x != 0) }")]
@@ -118,8 +124,8 @@ mod tests {
         let msg = decode("!AIVDO,1,1,,A,K01;FQh?PbtE3P00,0*75");
 
         assert_eq!(msg.mmsi, 1234567);
-        assert!((msg.longitude - (-13.368333)).abs() < 0.000001);
-        assert!((msg.latitude - (-50.121667)).abs() < 0.000001);
+        assert!((msg.longitude.unwrap() - (-13.368333)).abs() < 0.000001);
+        assert!((msg.latitude.unwrap() - (-50.121667)).abs() < 0.000001);
     }
 
     #[test]

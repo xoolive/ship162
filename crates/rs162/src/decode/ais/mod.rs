@@ -34,7 +34,7 @@ mod tests;
 
 pub use common::{
     EpfdType, InlandLoadedType, ManeuverIndicator, NavAid, NavigationStatus, ShipType,
-    StationIntervals, StationType, TransmitMode, TurnRate,
+    StationIntervals, StationType, TransmitMode,
 };
 use serde::Serialize;
 pub use type1::PositionReport; // Handles Types 1, 2, and 3

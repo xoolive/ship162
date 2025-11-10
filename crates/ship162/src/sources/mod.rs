@@ -91,38 +91,38 @@ pub async fn process_sentence(mut state: MutexGuard<'_, AppState>, sentence: &mu
     };
     match message {
         Message::PositionReport1(msg) => {
-            vessel.latitude = Some(msg.latitude);
-            vessel.longitude = Some(msg.longitude);
-            vessel.speed = Some(msg.speed);
-            vessel.turn = Some(msg.turn);
-            vessel.course = Some(msg.course);
-            vessel.heading = Some(msg.heading);
+            vessel.latitude = msg.latitude;
+            vessel.longitude = msg.longitude;
+            vessel.speed = msg.speed;
+            vessel.turn = msg.turn;
+            vessel.course = msg.course;
+            vessel.heading = msg.heading;
             vessel.status = Some(msg.status);
             vessel.last_update = sentence.timestamp;
         }
         Message::PositionReport2(msg) => {
-            vessel.latitude = Some(msg.latitude);
-            vessel.longitude = Some(msg.longitude);
-            vessel.speed = Some(msg.speed);
-            vessel.turn = Some(msg.turn);
-            vessel.course = Some(msg.course);
-            vessel.heading = Some(msg.heading);
+            vessel.latitude = msg.latitude;
+            vessel.longitude = msg.longitude;
+            vessel.speed = msg.speed;
+            vessel.turn = msg.turn;
+            vessel.course = msg.course;
+            vessel.heading = msg.heading;
             vessel.status = Some(msg.status);
             vessel.last_update = sentence.timestamp;
         }
         Message::PositionReport3(msg) => {
-            vessel.latitude = Some(msg.latitude);
-            vessel.longitude = Some(msg.longitude);
-            vessel.speed = Some(msg.speed);
-            vessel.turn = Some(msg.turn);
-            vessel.course = Some(msg.course);
-            vessel.heading = Some(msg.heading);
+            vessel.latitude = msg.latitude;
+            vessel.longitude = msg.longitude;
+            vessel.speed = msg.speed;
+            vessel.turn = msg.turn;
+            vessel.course = msg.course;
+            vessel.heading = msg.heading;
             vessel.status = Some(msg.status);
             vessel.last_update = sentence.timestamp;
         }
         Message::BaseStationTimeReport(msg) => {
-            vessel.latitude = Some(msg.latitude);
-            vessel.longitude = Some(msg.longitude);
+            vessel.latitude = msg.latitude;
+            vessel.longitude = msg.longitude;
             vessel.last_update = sentence.timestamp;
         }
         Message::StaticAndVoyageData(msg) => {
@@ -137,10 +137,10 @@ pub async fn process_sentence(mut state: MutexGuard<'_, AppState>, sentence: &mu
             vessel.last_update = sentence.timestamp;
         }
         Message::SarAircraftPositionReport(msg) => {
-            vessel.latitude = Some(msg.latitude);
-            vessel.longitude = Some(msg.longitude);
-            vessel.speed = Some(msg.speed as f32);
-            vessel.course = Some(msg.course);
+            vessel.latitude = msg.latitude;
+            vessel.longitude = msg.longitude;
+            vessel.speed = msg.speed.map(|s| s as f32);
+            vessel.course = msg.course;
             vessel.last_update = sentence.timestamp;
         }
         Message::DgnssBroadcastMessage(msg) => {
@@ -149,19 +149,19 @@ pub async fn process_sentence(mut state: MutexGuard<'_, AppState>, sentence: &mu
             vessel.last_update = sentence.timestamp;
         }
         Message::ClassBPositionReport(msg) => {
-            vessel.latitude = Some(msg.latitude);
-            vessel.longitude = Some(msg.longitude);
-            vessel.speed = Some(msg.speed);
-            vessel.course = Some(msg.course);
-            vessel.heading = Some(msg.heading);
+            vessel.latitude = msg.latitude;
+            vessel.longitude = msg.longitude;
+            vessel.speed = msg.speed;
+            vessel.course = msg.course;
+            vessel.heading = msg.heading;
             vessel.last_update = sentence.timestamp;
         }
         Message::ExtendedClassBPositionReport(msg) => {
-            vessel.latitude = Some(msg.latitude);
-            vessel.longitude = Some(msg.longitude);
-            vessel.speed = Some(msg.speed);
-            vessel.course = Some(msg.course);
-            vessel.heading = Some(msg.heading);
+            vessel.latitude = msg.latitude;
+            vessel.longitude = msg.longitude;
+            vessel.speed = msg.speed;
+            vessel.course = msg.course;
+            vessel.heading = msg.heading;
             vessel.ship_name = Some(msg.shipname.clone());
             vessel.ship_type = Some(msg.ship_type);
             vessel.to_bow = Some(msg.to_bow);
@@ -171,8 +171,8 @@ pub async fn process_sentence(mut state: MutexGuard<'_, AppState>, sentence: &mu
             vessel.last_update = sentence.timestamp;
         }
         Message::AidToNavigationReport(msg) => {
-            vessel.latitude = Some(msg.latitude);
-            vessel.longitude = Some(msg.longitude);
+            vessel.latitude = msg.latitude;
+            vessel.longitude = msg.longitude;
             vessel.to_bow = Some(msg.to_bow);
             vessel.to_stern = Some(msg.to_stern);
             vessel.to_port = Some(msg.to_port);
@@ -193,10 +193,10 @@ pub async fn process_sentence(mut state: MutexGuard<'_, AppState>, sentence: &mu
             vessel.last_update = sentence.timestamp;
         }
         Message::LongRangeAisBroadcastMessage(msg) => {
-            vessel.latitude = Some(msg.latitude);
-            vessel.longitude = Some(msg.longitude);
-            vessel.speed = Some(msg.speed as f32);
-            vessel.course = Some(msg.course as f32);
+            vessel.latitude = msg.latitude;
+            vessel.longitude = msg.longitude;
+            vessel.speed = msg.speed.map(|s| s as f32);
+            vessel.course = msg.course.map(|c| c as f32);
             vessel.last_update = sentence.timestamp;
         }
         _ => { /* Ignore other message types for now */ }

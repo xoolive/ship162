@@ -82,8 +82,6 @@ impl Display for NavigationStatus {
     }
 }
 
-impl ManeuverIndicator {}
-
 /// Maneuver indicator values
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum ManeuverIndicator {
@@ -110,16 +108,28 @@ impl ManeuverIndicator {
     }
 }
 
-/// Turn rate constants
-pub struct TurnRate;
+/// Timestamp status
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum Timestamp {
+    /// Seconds 0-59
+    Second(u8),
+    NotAvailable,
+    ManualInput,
+    DeadReckoning,
+    Inoperative,
+}
 
-impl TurnRate {
-    /// No turn information available
-    pub const NO_TI_DEFAULT: f32 = -128.0;
-    /// Turn information not available
-    pub const NOT_AVAILABLE: f32 = -128.0;
-    /// No turn
-    pub const NO_TURN: f32 = 0.0;
+impl Timestamp {
+    pub fn from_bits(bits: u8) -> Self {
+        match bits {
+            0..=59 => Self::Second(bits),
+            60 => Self::NotAvailable,
+            61 => Self::ManualInput,
+            62 => Self::DeadReckoning,
+            63 => Self::Inoperative,
+            _ => Self::NotAvailable,
+        }
+    }
 }
 
 /// Electronic Position Fixing Device (EPFD) types

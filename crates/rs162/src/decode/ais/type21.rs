@@ -1,7 +1,7 @@
 use deku::prelude::*;
 use serde::{Deserialize, Serialize};
 
-use super::common::{EpfdType, NavAid};
+use super::common::{EpfdType, NavAid, Timestamp};
 use super::converters::*;
 
 // Custom reader for optional name extension field
@@ -66,14 +66,14 @@ pub struct AidToNavigationReport {
         bits = "28",
         map = "|x: u32| -> Result<_, DekuError> { Ok(from_longitude(x)) }"
     )]
-    pub longitude: f64,
+    pub longitude: Option<f64>,
 
     /// Latitude in degrees (signed)
     #[deku(
         bits = "27",
         map = "|x: u32| -> Result<_, DekuError> { Ok(from_latitude(x)) }"
     )]
-    pub latitude: f64,
+    pub latitude: Option<f64>,
 
     /// Distance from reference point to bow in meters
     #[deku(bits = "9")]
@@ -98,9 +98,12 @@ pub struct AidToNavigationReport {
     )]
     pub epfd: EpfdType,
 
-    /// Time stamp (0-59 seconds)
-    #[deku(bits = "6")]
-    pub second: u8,
+    /// Time stamp
+    #[deku(
+        bits = "6",
+        map = "|x: u8| -> Result<_, DekuError> { Ok(Timestamp::from_bits(x)) }"
+    )]
+    pub second: Timestamp,
 
     /// Off position indicator
     #[deku(bits = "1", map = "|x: u8| -> Result<_, DekuError> { Ok(x != 0) }")]
@@ -201,8 +204,8 @@ mod tests {
         assert_eq!(msg.aid_type, NavAid::ReferencePoint);
         assert_eq!(msg.name, "DFO2");
         assert!(msg.accuracy);
-        assert!((msg.latitude - 48.65457).abs() < 0.00001);
-        assert!((msg.longitude - (-123.429155)).abs() < 0.000001);
+        assert!((msg.latitude.unwrap() - 48.65457).abs() < 0.00001);
+        assert!((msg.longitude.unwrap() - (-123.429155)).abs() < 0.000001);
         assert_eq!(msg.to_bow, 0);
         assert_eq!(msg.to_stern, 0);
         assert_eq!(msg.to_port, 0);

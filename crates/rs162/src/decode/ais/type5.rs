@@ -34,8 +34,11 @@ pub struct StaticAndVoyageData {
     pub ais_version: u8,
 
     /// IMO number (30 bits)
-    #[deku(bits = "30")]
-    pub imo: u32,
+    #[deku(
+        bits = "30",
+        map = "|x: u32| -> Result<_, DekuError> { Ok(from_imo(x)) }"
+    )]
+    pub imo: Option<u32>,
 
     /// Call sign (7 characters, 6-bit ASCII)
     #[deku(
@@ -81,28 +84,40 @@ pub struct StaticAndVoyageData {
     )]
     pub epfd: EpfdType,
 
-    /// Month (1-12, 0 = N/A)
-    #[deku(bits = "4")]
-    pub month: u8,
+    /// Month (1-12)
+    #[deku(
+        bits = "4",
+        map = "|x: u8| -> Result<_, DekuError> { Ok(from_month(x)) }"
+    )]
+    pub month: Option<u8>,
 
-    /// Day (1-31, 0 = N/A)
-    #[deku(bits = "5")]
-    pub day: u8,
+    /// Day (1-31)
+    #[deku(
+        bits = "5",
+        map = "|x: u8| -> Result<_, DekuError> { Ok(from_day(x)) }"
+    )]
+    pub day: Option<u8>,
 
-    /// Hour (0-23, 24 = N/A)
-    #[deku(bits = "5")]
-    pub hour: u8,
+    /// Hour (0-23)
+    #[deku(
+        bits = "5",
+        map = "|x: u8| -> Result<_, DekuError> { Ok(from_hour(x)) }"
+    )]
+    pub hour: Option<u8>,
 
-    /// Minute (0-59, 60 = N/A)
-    #[deku(bits = "6")]
-    pub minute: u8,
+    /// Minute (0-59)
+    #[deku(
+        bits = "6",
+        map = "|x: u8| -> Result<_, DekuError> { Ok(from_minute(x)) }"
+    )]
+    pub minute: Option<u8>,
 
     /// Maximum present static draught (1/10 meters)
     #[deku(
         bits = "8",
-        map = "|x: u8| -> Result<_, DekuError> { Ok(from_10th_u8(x)) }"
+        map = "|x: u8| -> Result<_, DekuError> { Ok(from_draught(x)) }"
     )]
-    pub draught: f32,
+    pub draught: Option<f32>,
 
     /// Destination (20 characters, 6-bit ASCII)
     #[deku(
@@ -184,7 +199,7 @@ mod tests {
         assert_eq!(msg.to_stern, 70);
         assert_eq!(msg.to_port, 1);
         assert_eq!(msg.to_starboard, 31);
-        assert!((msg.draught - 12.2).abs() < 0.1);
+        assert!((msg.draught.unwrap() - 12.2).abs() < 0.1);
         assert_eq!(msg.destination, "NEW YORK");
         assert!(!msg.dte);
         assert_eq!(msg.epfd, EpfdType::Gps);

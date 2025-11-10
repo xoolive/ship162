@@ -1,6 +1,7 @@
 use deku::prelude::*;
 use serde::{Deserialize, Serialize};
 
+use super::common::Timestamp;
 use super::converters::*;
 
 /// AIS Standard SAR Aircraft Position Report (Type 9)
@@ -27,13 +28,19 @@ pub struct SarAircraftPositionReport {
     )]
     pub mmsi: u32,
 
-    /// Altitude in meters (0-4094, 4095 = not available)
-    #[deku(bits = "12")]
-    pub alt: u16,
+    /// Altitude in meters (0-4094)
+    #[deku(
+        bits = "12",
+        map = "|x: u16| -> Result<_, DekuError> { Ok(from_altitude(x)) }"
+    )]
+    pub alt: Option<u16>,
 
-    /// Speed over ground in knots (0-1022, 1023 = not available)
-    #[deku(bits = "10")]
-    pub speed: u16,
+    /// Speed over ground in knots (0-1022)
+    #[deku(
+        bits = "10",
+        map = "|x: u16| -> Result<_, DekuError> { Ok(from_speed_sar(x)) }"
+    )]
+    pub speed: Option<u16>,
 
     /// Position accuracy flag
     #[deku(bits = "1", map = "|x: u8| -> Result<_, DekuError> { Ok(x != 0) }")]
@@ -44,25 +51,28 @@ pub struct SarAircraftPositionReport {
         bits = "28",
         map = "|x: u32| -> Result<_, DekuError> { Ok(from_longitude(x)) }"
     )]
-    pub longitude: f64,
+    pub longitude: Option<f64>,
 
     /// Latitude in degrees (signed)
     #[deku(
         bits = "27",
         map = "|x: u32| -> Result<_, DekuError> { Ok(from_latitude(x)) }"
     )]
-    pub latitude: f64,
+    pub latitude: Option<f64>,
 
     /// Course over ground in degrees
     #[deku(
         bits = "12",
         map = "|x: u16| -> Result<_, DekuError> { Ok(from_course(x)) }"
     )]
-    pub course: f32,
+    pub course: Option<f32>,
 
-    /// Time stamp (0-59 seconds, 60 = not available, 61 = manual input, 62 = estimated, 63 = inoperative)
-    #[deku(bits = "6")]
-    pub second: u8,
+    /// Time stamp
+    #[deku(
+        bits = "6",
+        map = "|x: u8| -> Result<_, DekuError> { Ok(Timestamp::from_bits(x)) }"
+    )]
+    pub second: Timestamp,
 
     /// Reserved for regional or local use
     #[deku(bits = "8")]
@@ -138,13 +148,13 @@ mod tests {
         assert_eq!(msg.msg_type, 9);
         assert_eq!(msg.repeat, 0);
         assert_eq!(msg.mmsi, 111232511);
-        assert_eq!(msg.alt, 303);
-        assert_eq!(msg.speed, 42);
+        assert_eq!(msg.alt, Some(303));
+        assert_eq!(msg.speed, Some(42));
         assert!(!msg.accuracy);
-        assert!((msg.longitude - (-6.27884)).abs() < 0.00001);
-        assert!((msg.latitude - 58.144).abs() < 0.001);
-        assert!((msg.course - 154.5).abs() < 0.1);
-        assert_eq!(msg.second, 15);
+        assert!((msg.longitude.unwrap() - (-6.27884)).abs() < 0.00001);
+        assert!((msg.latitude.unwrap() - 58.144).abs() < 0.001);
+        assert!((msg.course.unwrap() - 154.5).abs() < 0.1);
+        assert_eq!(msg.second, Timestamp::Second(15));
         assert!(msg.dte);
         assert_eq!(msg.radio, 33392);
         assert!(!msg.raim);
