@@ -588,6 +588,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "desperado"
+version = "0.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "21d7e6e24696db0a6de2a87e86fc9e05da2f13384a8460d93a123ba37ad0dd75"
+dependencies = [
+ "dirs",
+ "futures",
+ "num-complex",
+ "rtl-sdr-rs",
+ "tokio",
+]
+
+[[package]]
 name = "difflib"
 version = "0.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1643,6 +1656,7 @@ name = "rs162"
 version = "0.1.0"
 dependencies = [
  "deku",
+ "desperado",
  "futures",
  "num-complex",
  "once_cell",
@@ -1800,6 +1814,7 @@ dependencies = [
  "anyhow",
  "clap",
  "crossterm 0.29.0",
+ "desperado",
  "dirs",
  "dotenv",
  "futures",

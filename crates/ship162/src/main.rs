@@ -8,6 +8,8 @@ mod tui;
 use anyhow::Result;
 use clap::Parser;
 use crossterm::event::{KeyCode, KeyModifiers};
+use desperado::rtlsdr::RtlSdrConfig;
+use rs162::dsp::ais::AIS_SAMPLE_RATE_288K;
 use serde::Deserialize;
 use state::AppState;
 use std::{path::PathBuf, sync::Arc};
@@ -177,7 +179,15 @@ async fn main() -> Result<()> {
             sources::Address::Rtlsdr(_) => {
                 let rtl_clone = tx.clone();
                 tokio::spawn(async move {
-                    let source = RtlSdrSource::new(rtl_clone, Default::default());
+                    let source = RtlSdrSource::new(
+                        rtl_clone,
+                        RtlSdrConfig {
+                            device_index: 0,
+                            center_freq: 162_000_000,
+                            sample_rate: AIS_SAMPLE_RATE_288K,
+                            gain: Some(496),
+                        },
+                    );
                     tokio::select! {
                         result = source.run() => {
                             if let Err(e) = result {

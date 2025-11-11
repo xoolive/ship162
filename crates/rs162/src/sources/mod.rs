@@ -10,7 +10,7 @@ pub mod nmea;
 pub mod nmea_ts;
 pub mod rtlsdr;
 
-pub use iq::{IqFormat, IqSource};
+pub use iq::{AisAsyncIqSource, AisIqSource};
 pub use nmea::NmeaFileSource;
 pub use nmea_ts::TimestampedNmeaTcpSource;
-pub use rtlsdr::{RtlSdrConfig, RtlSdrReceiver};
+pub use rtlsdr::{AsyncRtlSdrReceiver, RtlSdrReceiver};

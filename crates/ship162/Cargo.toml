@@ -7,6 +7,9 @@ edition = "2021"
 name = "ship162"
 path = "src/main.rs"
 
+[features]
+rtlsdr = ['desperado/rtlsdr', 'rs162/rtlsdr']
+
 [dependencies]
 rs162 = { path = "../rs162" }
 anyhow = "1.0"
@@ -29,3 +32,4 @@ toml = "0.9.8"
 tracing-subscriber = { version = "0.3.20", features = ["env-filter"] }
 url = "2.5.7"
 keepawake = "0.6.0"
+desperado = { version = "0.1.1", features = ["rtlsdr"] }

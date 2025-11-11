@@ -1,8 +1,5 @@
-use rs162::{
-    decode::mmsi::MmsiInfo,
-    dsp::ais::AIS_SAMPLE_RATE_288K,
-    sources::{IqFormat, IqSource},
-};
+use desperado::IqFormat;
+use rs162::{decode::mmsi::MmsiInfo, dsp::ais::AIS_SAMPLE_RATE_288K, sources::AisIqSource};
 use serde_json::json;
 use std::env;
 
@@ -11,7 +8,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .nth(1)
         .unwrap_or_else(|| "127.0.0.1:1234".to_string());
 
-    let receiver = IqSource::from_tcp(&addr, AIS_SAMPLE_RATE_288K, IqFormat::Cu8)?;
+    let host = addr.split(':').next().unwrap_or(&addr);
+    let port = if addr.contains(':') {
+        0
+    } else {
+        addr.split(':').nth(1).unwrap_or("1234").parse()?
+    };
+
+    let receiver = AisIqSource::from_tcp(host, port, AIS_SAMPLE_RATE_288K, IqFormat::Cu8)?;
 
     for result in receiver {
         match result {

@@ -1,5 +1,6 @@
+use desperado::rtlsdr::RtlSdrConfig;
 use futures::StreamExt; // for .next().await
-use rs162::sources::{rtlsdr::AsyncRtlSdrReceiver, RtlSdrConfig};
+use rs162::sources::rtlsdr::AsyncRtlSdrReceiver;
 use tokio::sync::mpsc::Sender;
 use tracing::info;
 
