@@ -56,7 +56,7 @@ impl RtlSdrReceiver {
     pub fn with_config(config: RtlSdrConfig) -> Result<Self, RtlsdrError> {
         let source = IqSource::from_rtlsdr(
             config.device_index,
-            config.sample_rate,
+            config.center_freq,
             AIS_SAMPLE_RATE_288K,
             config.gain,
         )?;
