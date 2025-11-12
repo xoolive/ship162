@@ -9,6 +9,7 @@ use anyhow::Result;
 use clap::Parser;
 use crossterm::event::{KeyCode, KeyModifiers};
 use desperado::rtlsdr::RtlSdrConfig;
+use redis::AsyncCommands;
 use rs162::dsp::ais::AIS_SAMPLE_RATE_288K;
 use serde::Deserialize;
 use state::AppState;
@@ -41,6 +42,14 @@ struct Options {
     /// Prevent the computer sleeping when decoding is in progress
     #[arg(long, default_value=None)]
     prevent_sleep: bool,
+
+    /// Publish messages to a Redis pubsub
+    #[arg(short, long, value_name = "REDIS URL")]
+    redis_url: Option<String>,
+
+    /// Redis topic for the messages, default to "ship162"
+    #[arg(long, value_name = "REDIS TOPIC")]
+    redis_topic: Option<String>,
 }
 
 #[tokio::main]
@@ -80,6 +89,12 @@ async fn main() -> Result<()> {
     if cli_options.prevent_sleep {
         options.prevent_sleep = cli_options.prevent_sleep;
     }
+    if cli_options.redis_url.is_some() {
+        options.redis_url = cli_options.redis_url;
+    }
+    if cli_options.redis_topic.is_some() {
+        options.redis_topic = cli_options.redis_topic;
+    }
     options.sources.append(&mut cli_options.sources);
 
     // example: RUST_LOG=rs1090=DEBUG
@@ -101,6 +116,20 @@ async fn main() -> Result<()> {
             subscriber.init(); // no logging
         }
     }
+
+    let mut redis_connect = match options
+        .redis_url
+        .map(|url| redis::Client::open(url).unwrap())
+    {
+        // map is not possible because of the .await (the async context thing)
+        Some(c) => Some(
+            c.get_multiplexed_async_connection()
+                .await
+                .expect("Unable to connect to the Redis server"),
+        ),
+        None => None,
+    };
+    let redis_topic = options.redis_topic.unwrap_or("ship162".to_string());
 
     let _awake = match options.prevent_sleep {
         true => Some(
@@ -272,6 +301,9 @@ async fn main() -> Result<()> {
                     if let Some(file) = &mut file {
                         let _ = file.write_all(json.as_bytes()).await;
                         let _ = file.write_all(b"\n").await;
+                    }
+                    if let Some(c) = &mut redis_connect {
+                        let _: () = c.publish(redis_topic.clone(), json).await.unwrap();
                     }
                 }
             }
