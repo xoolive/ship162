@@ -84,73 +84,18 @@ pub enum MmsiType {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MmsiInfo {
-    pub mmsi: String,
     pub mmsi_type: MmsiType,
     #[serde(flatten)]
     pub country: Country,
 }
 
 impl MmsiInfo {
-    pub fn new(mmsi: String, mmsi_type: MmsiType, country: Country) -> Self {
-        Self {
-            mmsi,
-            mmsi_type,
-            country,
-        }
+    pub fn new(mmsi_type: MmsiType, country: Country) -> Self {
+        Self { mmsi_type, country }
     }
 
     pub fn from_message(msg: &Message) -> Result<Self, String> {
-        let mmsi = match msg {
-            Message::PositionReport1(msg) => msg.mmsi,
-            Message::PositionReport2(msg) => msg.mmsi,
-            Message::PositionReport3(msg) => msg.mmsi,
-            Message::BaseStationTimeReport(msg) => msg.mmsi,
-            Message::StaticAndVoyageData(msg) => msg.mmsi,
-            Message::BinaryAddressedMessage(msg) => msg.mmsi,
-            Message::BinaryAcknowledge(msg) => msg.mmsi,
-            Message::BinaryBroadcastMessage(msg) => match msg {
-                super::ais::type8::BinaryBroadcastMessage::Default(m) => m.mmsi,
-                super::ais::type8::BinaryBroadcastMessage::Inland(m) => m.mmsi,
-            },
-            Message::SarAircraftPositionReport(msg) => msg.mmsi,
-            Message::UtcDateInquiry(msg) => msg.mmsi,
-            Message::BaseStationTimeReport11(msg) => msg.mmsi,
-            Message::AddressedSafetyMessage(msg) => msg.mmsi,
-            Message::SafetyBroadcastMessage(msg) => msg.mmsi,
-            Message::Interrogation(msg) => msg.mmsi,
-            Message::AssignmentModeCommand(msg) => match msg {
-                super::ais::type16::AssignmentModeCommand::Single(m) => m.mmsi,
-                super::ais::type16::AssignmentModeCommand::Double(m) => m.mmsi,
-            },
-            Message::DgnssBroadcastMessage(msg) => msg.mmsi,
-            Message::ClassBPositionReport(msg) => msg.mmsi,
-            Message::ExtendedClassBPositionReport(msg) => msg.mmsi,
-            Message::DataLinkManagementMessage(msg) => msg.mmsi,
-            Message::AidToNavigationReport(msg) => msg.mmsi,
-            Message::ChannelManagement(msg) => match msg {
-                super::ais::type22::ChannelManagement::Broadcast(m) => m.mmsi,
-                super::ais::type22::ChannelManagement::Addressed(m) => m.mmsi,
-            },
-            Message::GroupAssignmentCommand(msg) => msg.mmsi,
-            Message::StaticDataReport(msg) => match msg {
-                super::ais::type24::StaticDataReport::PartA(m) => m.mmsi,
-                super::ais::type24::StaticDataReport::PartB(m) => m.mmsi,
-            },
-            Message::SingleSlotBinaryMessage(msg) => match msg {
-                super::ais::type25::SingleSlotBinaryMessage::AddressedStructured(m) => m.mmsi,
-                super::ais::type25::SingleSlotBinaryMessage::BroadcastStructured(m) => m.mmsi,
-                super::ais::type25::SingleSlotBinaryMessage::AddressedUnstructured(m) => m.mmsi,
-                super::ais::type25::SingleSlotBinaryMessage::BroadcastUnstructured(m) => m.mmsi,
-            },
-            Message::MultipleSlotBinaryMessage(msg) => match msg {
-                super::ais::type26::MultipleSlotBinaryMessage::AddressedStructured(m) => m.mmsi,
-                super::ais::type26::MultipleSlotBinaryMessage::BroadcastStructured(m) => m.mmsi,
-                super::ais::type26::MultipleSlotBinaryMessage::AddressedUnstructured(m) => m.mmsi,
-                super::ais::type26::MultipleSlotBinaryMessage::BroadcastUnstructured(m) => m.mmsi,
-            },
-            Message::LongRangeAisBroadcastMessage(msg) => msg.mmsi,
-        };
-        Self::from_mmsi(mmsi)
+        Self::from_mmsi(msg.mmsi())
     }
 
     pub fn from_mmsi(mmsi_num: u32) -> Result<Self, String> {
@@ -164,7 +109,6 @@ impl MmsiInfo {
             let mid: u16 = mmsi_str[2..5].parse().unwrap_or(0);
             if (200..800).contains(&mid) {
                 return Ok(MmsiInfo::new(
-                    mmsi_str,
                     MmsiType::CoastStation,
                     country_from_mid(mid).clone(),
                 ));
@@ -178,7 +122,6 @@ impl MmsiInfo {
             let mid: u16 = mmsi_str[1..4].parse().unwrap_or(0);
             if (200..800).contains(&mid) {
                 return Ok(MmsiInfo::new(
-                    mmsi_str,
                     MmsiType::GroupOfShips,
                     country_from_mid(mid).clone(),
                 ));
@@ -192,7 +135,6 @@ impl MmsiInfo {
             let mid: u16 = mmsi_str[3..6].parse().unwrap_or(0);
             if (200..800).contains(&mid) {
                 return Ok(MmsiInfo::new(
-                    mmsi_str,
                     MmsiType::SarAircraft,
                     country_from_mid(mid).clone(),
                 ));
@@ -208,13 +150,12 @@ impl MmsiInfo {
             if country.country == "Unknown" {
                 return Err(format!("Invalid MID ({}) for AtoN", mid));
             }
-            return Ok(MmsiInfo::new(mmsi_str, MmsiType::AisAton, country.clone()));
+            return Ok(MmsiInfo::new(MmsiType::AisAton, country.clone()));
         }
 
         // FORMAT 5 — AIS SART / MOB / EPIRB (970–979XXXX)
         if (970..980).contains(&prefix3) {
             return Ok(MmsiInfo::new(
-                mmsi_str,
                 MmsiType::AisSartMobEpirb,
                 DEFAULT_COUNTRY.clone(),
             ));
@@ -224,7 +165,6 @@ impl MmsiInfo {
         let mid: u16 = prefix3;
         if (200..800).contains(&mid) {
             return Ok(MmsiInfo::new(
-                mmsi_str,
                 MmsiType::StandardShipStation,
                 country_from_mid(mid).clone(),
             ));

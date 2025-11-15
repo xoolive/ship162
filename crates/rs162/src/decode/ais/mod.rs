@@ -36,7 +36,7 @@ pub use common::{
     EpfdType, InlandLoadedType, ManeuverIndicator, NavAid, NavigationStatus, ShipType,
     StationIntervals, StationType, TransmitMode,
 };
-use serde::Serialize;
+use serde::{Deserialize, Deserializer, Serialize};
 pub use type1::PositionReport; // Handles Types 1, 2, and 3
 pub use type10::UtcDateInquiry;
 pub use type12::AddressedSafetyMessage;
@@ -67,7 +67,7 @@ use deku::prelude::*;
 use std::io::Seek;
 
 /// General AIS message type that dispatches to specific message types based on message type field
-#[derive(Debug, PartialEq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Serialize)]
 #[serde(untagged)]
 pub enum Message {
     PositionReport1(PositionReport),
@@ -96,6 +96,107 @@ pub enum Message {
     SingleSlotBinaryMessage(SingleSlotBinaryMessage),
     MultipleSlotBinaryMessage(MultipleSlotBinaryMessage),
     LongRangeAisBroadcastMessage(LongRangeAisBroadcastMessage),
+}
+
+impl<'de> Deserialize<'de> for Message {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        // TODO: generalise to `serde::de::Visitor`
+        use serde::de;
+
+        let value = serde_json::Value::deserialize(deserializer)?;
+        let msg_type = value
+            .get("msg_type")
+            .and_then(|v| v.as_u64())
+            .ok_or_else(|| de::Error::missing_field("msg_type"))? as u8;
+
+        match msg_type {
+            1 => serde_json::from_value(value)
+                .map(Message::PositionReport1)
+                .map_err(de::Error::custom),
+            2 => serde_json::from_value(value)
+                .map(Message::PositionReport2)
+                .map_err(de::Error::custom),
+            3 => serde_json::from_value(value)
+                .map(Message::PositionReport3)
+                .map_err(de::Error::custom),
+            4 => serde_json::from_value(value)
+                .map(Message::BaseStationTimeReport)
+                .map_err(de::Error::custom),
+            5 => serde_json::from_value(value)
+                .map(Message::StaticAndVoyageData)
+                .map_err(de::Error::custom),
+            6 => serde_json::from_value(value)
+                .map(Message::BinaryAddressedMessage)
+                .map_err(de::Error::custom),
+            7 => serde_json::from_value(value)
+                .map(Message::BinaryAcknowledge)
+                .map_err(de::Error::custom),
+            8 => serde_json::from_value(value)
+                .map(Message::BinaryBroadcastMessage)
+                .map_err(de::Error::custom),
+            9 => serde_json::from_value(value)
+                .map(Message::SarAircraftPositionReport)
+                .map_err(de::Error::custom),
+            10 => serde_json::from_value(value)
+                .map(Message::UtcDateInquiry)
+                .map_err(de::Error::custom),
+            11 => serde_json::from_value(value)
+                .map(Message::BaseStationTimeReport11)
+                .map_err(de::Error::custom),
+            12 => serde_json::from_value(value)
+                .map(Message::AddressedSafetyMessage)
+                .map_err(de::Error::custom),
+            14 => serde_json::from_value(value)
+                .map(Message::SafetyBroadcastMessage)
+                .map_err(de::Error::custom),
+            15 => serde_json::from_value(value)
+                .map(Message::Interrogation)
+                .map_err(de::Error::custom),
+            16 => serde_json::from_value(value)
+                .map(Message::AssignmentModeCommand)
+                .map_err(de::Error::custom),
+            17 => serde_json::from_value(value)
+                .map(Message::DgnssBroadcastMessage)
+                .map_err(de::Error::custom),
+            18 => serde_json::from_value(value)
+                .map(Message::ClassBPositionReport)
+                .map_err(de::Error::custom),
+            19 => serde_json::from_value(value)
+                .map(Message::ExtendedClassBPositionReport)
+                .map_err(de::Error::custom),
+            20 => serde_json::from_value(value)
+                .map(Message::DataLinkManagementMessage)
+                .map_err(de::Error::custom),
+            21 => serde_json::from_value(value)
+                .map(Message::AidToNavigationReport)
+                .map_err(de::Error::custom),
+            22 => serde_json::from_value(value)
+                .map(Message::ChannelManagement)
+                .map_err(de::Error::custom),
+            23 => serde_json::from_value(value)
+                .map(Message::GroupAssignmentCommand)
+                .map_err(de::Error::custom),
+            24 => serde_json::from_value(value)
+                .map(Message::StaticDataReport)
+                .map_err(de::Error::custom),
+            25 => serde_json::from_value(value)
+                .map(Message::SingleSlotBinaryMessage)
+                .map_err(de::Error::custom),
+            26 => serde_json::from_value(value)
+                .map(Message::MultipleSlotBinaryMessage)
+                .map_err(de::Error::custom),
+            27 => serde_json::from_value(value)
+                .map(Message::LongRangeAisBroadcastMessage)
+                .map_err(de::Error::custom),
+            _ => Err(de::Error::custom(format!(
+                "unknown message type for deserialisation: {}",
+                msg_type
+            ))),
+        }
+    }
 }
 
 impl DekuReader<'_, ()> for Message {
@@ -271,5 +372,39 @@ impl Message {
         let cursor = std::io::Cursor::new(binary_data);
         let mut reader = Reader::new(cursor);
         Ok(Message::from_reader_with_ctx(&mut reader, ())?)
+    }
+
+    pub fn mmsi(&self) -> u32 {
+        match self {
+            Message::PositionReport1(msg) => msg.mmsi,
+            Message::PositionReport2(msg) => msg.mmsi,
+            Message::PositionReport3(msg) => msg.mmsi,
+            Message::BaseStationTimeReport(msg) => msg.mmsi,
+            Message::StaticAndVoyageData(msg) => msg.mmsi,
+            Message::BinaryAddressedMessage(msg) => msg.mmsi,
+            Message::BinaryAcknowledge(msg) => msg.mmsi,
+            Message::BinaryBroadcastMessage(msg) => match msg {
+                super::ais::type8::BinaryBroadcastMessage::Default(m) => m.mmsi,
+                super::ais::type8::BinaryBroadcastMessage::Inland(m) => m.mmsi,
+            },
+            Message::SarAircraftPositionReport(msg) => msg.mmsi,
+            Message::UtcDateInquiry(msg) => msg.mmsi,
+            Message::BaseStationTimeReport11(msg) => msg.mmsi,
+            Message::AddressedSafetyMessage(msg) => msg.mmsi,
+            Message::SafetyBroadcastMessage(msg) => msg.mmsi,
+            Message::Interrogation(msg) => msg.mmsi,
+            Message::AssignmentModeCommand(msg) => msg.mmsi(),
+            Message::DgnssBroadcastMessage(msg) => msg.mmsi,
+            Message::ClassBPositionReport(msg) => msg.mmsi,
+            Message::ExtendedClassBPositionReport(msg) => msg.mmsi,
+            Message::DataLinkManagementMessage(msg) => msg.mmsi,
+            Message::AidToNavigationReport(msg) => msg.mmsi,
+            Message::ChannelManagement(msg) => msg.mmsi(),
+            Message::GroupAssignmentCommand(msg) => msg.mmsi,
+            Message::StaticDataReport(msg) => msg.mmsi(),
+            Message::SingleSlotBinaryMessage(msg) => msg.mmsi(),
+            Message::MultipleSlotBinaryMessage(msg) => msg.mmsi(),
+            Message::LongRangeAisBroadcastMessage(msg) => msg.mmsi,
+        }
     }
 }

@@ -1,5 +1,5 @@
 use deku::prelude::*;
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize};
 
 use super::converters::*;
 
@@ -191,12 +191,38 @@ pub struct ChannelManagementBroadcast {
 /// - If addressed field is 1: addressed mode with destination MMSIs
 ///
 /// Reference: <https://gpsd.gitlab.io/gpsd/AIVDM.html#_type_22_channel_management>
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(untagged)]
 pub enum ChannelManagement {
     /// Broadcast mode (addressed = 0) - with geographical area
     Broadcast(ChannelManagementBroadcast),
     /// Addressed mode (addressed = 1) - with destination MMSIs
     Addressed(ChannelManagementAddressed),
+}
+
+// NOTE: `super::Message::deserialize` relies on `msg_type`
+impl<'de> Deserialize<'de> for ChannelManagement {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        use serde::de;
+        let value = serde_json::Value::deserialize(deserializer)?;
+        let addressed = value
+            .get("addressed")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
+
+        if addressed {
+            serde_json::from_value(value)
+                .map(ChannelManagement::Addressed)
+                .map_err(de::Error::custom)
+        } else {
+            serde_json::from_value(value)
+                .map(ChannelManagement::Broadcast)
+                .map_err(de::Error::custom)
+        }
+    }
 }
 
 impl ChannelManagement {

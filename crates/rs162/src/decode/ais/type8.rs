@@ -1,5 +1,5 @@
 use deku::prelude::*;
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize};
 
 use super::common::InlandLoadedType;
 use super::converters::*;
@@ -10,7 +10,8 @@ use super::converters::*;
 /// based on the DAC (Designated Area Code) and FID (Function Identifier).
 ///
 /// Reference: <https://gpsd.gitlab.io/gpsd/AIVDM.html#_type_8_binary_broadcast_message>
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(untagged)]
 pub enum BinaryBroadcastMessage {
     /// Default variant for unknown DAC/FID combinations
     Default(MessageType8Default),
@@ -214,6 +215,29 @@ impl BinaryBroadcastMessage {
     /// Convert to JSON string
     pub fn to_json(&self) -> Result<String, serde_json::Error> {
         serde_json::to_string(self)
+    }
+}
+
+// NOTE: `super::Message::deserialize` relies on `msg_type`
+impl<'de> Deserialize<'de> for BinaryBroadcastMessage {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        use serde::de;
+        let value = serde_json::Value::deserialize(deserializer)?;
+        let dac = value.get("dac").and_then(|v| v.as_u64()).unwrap_or(0) as u16;
+        let fid = value.get("fid").and_then(|v| v.as_u64()).unwrap_or(0) as u8;
+
+        if dac == 200 && fid == 10 {
+            serde_json::from_value(value)
+                .map(BinaryBroadcastMessage::Inland)
+                .map_err(de::Error::custom)
+        } else {
+            serde_json::from_value(value)
+                .map(BinaryBroadcastMessage::Default)
+                .map_err(de::Error::custom)
+        }
     }
 }
 

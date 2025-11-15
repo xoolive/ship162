@@ -28,11 +28,9 @@ pub struct VesselState {
 }
 
 impl VesselState {
-    pub fn new(mmsi_info: MmsiInfo) -> Self {
-        let mmsi = mmsi_info.mmsi.clone();
-
+    pub fn new(mmsi: u32, mmsi_info: MmsiInfo) -> Self {
         Self {
-            mmsi,
+            mmsi: format!("{:09}", mmsi),
             mmsi_info: Some(mmsi_info),
             latitude: None,
             longitude: None,
@@ -79,11 +77,12 @@ impl AppState {
         Self::default()
     }
 
-    pub fn update_vessel(&mut self, mmsi_info: MmsiInfo) -> &mut VesselState {
+    pub fn update_vessel(&mut self, mmsi: u32, mmsi_info: MmsiInfo) -> &mut VesselState {
+        let mmsi_str = format!("{:09}", mmsi);
         let vessel = self
             .vessels
-            .entry(mmsi_info.mmsi.clone())
-            .or_insert_with(|| VesselState::new(mmsi_info));
+            .entry(mmsi_str)
+            .or_insert_with(|| VesselState::new(mmsi, mmsi_info));
         vessel.count += 1;
         vessel
     }
