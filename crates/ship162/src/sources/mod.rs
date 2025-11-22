@@ -32,10 +32,9 @@ pub enum AddressPath {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Address {
-    /// Address to a TCP feed, like the one from Norwegian AIS Server (e.g. `tcp://ais.example.com:1234`)
+    /// Address to a TCP feed (e.g. `tcp://` defaults to the Norwegian AIS server, otherwise `tcp://ais.example.com:1234`)
     Tcp(AddressPath),
-    /// Address to a MQTT broker, like the one from the Finnish Digitraffic service
-    /// https://www.digitraffic.fi/en/marine-traffic/
+    /// Address to the Finnish Digitraffic MQTT broker (e.g. `mqtt://` defaults to `ship162` client ID, otherwise `mqtt://my_client_id`)
     Mqtt(String),
     /// A RTL-SDR dongle (require feature `rtlsdr`): the parameter can be empty, or use other specifiers, e.g. `rtlsdr://serial=00000001`
     Rtlsdr(Option<String>),

@@ -262,14 +262,16 @@ pub struct MqttReceiver {
 
 impl MqttReceiver {
     /// Create a new MQTT receiver with the specified application name
-    pub async fn new(app_name: &str) -> Result<Self, MqttError> {
-        Self::with_config(app_name, MQTT_BROKER, MQTT_TOPIC).await
+    pub async fn new(client_id: &str) -> Result<Self, MqttError> {
+        Self::with_config(client_id, MQTT_BROKER, MQTT_TOPIC).await
     }
 
     /// Create a new MQTT receiver with custom broker and topic
-    pub async fn with_config(app_name: &str, broker: &str, topic: &str) -> Result<Self, MqttError> {
-        // Generate unique client ID
-        let client_id = app_name.to_string();
+    pub async fn with_config(
+        client_id: &str,
+        broker: &str,
+        topic: &str,
+    ) -> Result<Self, MqttError> {
         info!("Creating MQTT client with ID: {}", client_id);
 
         // Use WebSocket transport
