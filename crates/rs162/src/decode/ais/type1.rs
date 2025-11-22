@@ -105,7 +105,7 @@ pub struct PositionReport {
     #[serde(skip)]
     pub spare_1: u8,
 
-    /// RAIM flag
+    /// Receiver autonomous integrity monitoring (RAIM) flag
     #[deku(bits = "1", map = "|x: u8| -> Result<_, DekuError> { Ok(x != 0) }")]
     pub raim: bool,
 

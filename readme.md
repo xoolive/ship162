@@ -165,6 +165,24 @@ Real-time AIS data is freely available from the Norwegian Coastal Administration
 - **Format**: IEC 61162-1 (NMEA with timestamps)
 - **License**: Norwegian license for public data
 
+More information: <https://www.kystverket.no/en/sea-transport-and-ports/ais/access-to-ais-data/>
+
+### Finnish Digitraffic MQTT Feed
+
+Real-time AIS data is available via MQTT from Finnish Digitraffic:
+
+- **Broker**: `mqtt.digitraffic.fi`
+- **Topics**:
+  - `vessels-v2/\<mmsi\>/metadata`
+  - `vessels-v2/\<mmsi\>/locations`
+  - `vessels-v2/status`
+- **Format**: JSON messages containing AIS data
+- **License**:
+  "Kaikki Digitraffic -palvelun kautta jaettava tieto on koneluettavaa avointa dataa ja on käytettävissä Creative Commons 4.0 Nimeä -käyttöluvalla, mikä mahdollistaa uusien palveluiden ja ohjelmistojen kehittämisen."
+  (machine translation: _"All data distributed through the Digitraffic service is machine-readable open data and is available under the Creative Commons 4.0 Attribution license, which enables the development of new services and software."_)
+
+More information: <https://www.digitraffic.fi/en/marine-traffic/>
+
 ## Agent-based coding
 
 Most of the codebase has been generated with the assistance of Claude Sonnet 4, using specifications from:

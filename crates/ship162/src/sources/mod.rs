@@ -11,6 +11,7 @@ use url::Url;
 
 use crate::state::AppState;
 
+pub mod mqtt;
 pub mod rtlsdr;
 pub mod tcp;
 
@@ -33,6 +34,9 @@ pub enum AddressPath {
 pub enum Address {
     /// Address to a TCP feed, like the one from Norwegian AIS Server (e.g. `tcp://ais.example.com:1234`)
     Tcp(AddressPath),
+    /// Address to a MQTT broker, like the one from the Finnish Digitraffic service
+    /// https://www.digitraffic.fi/en/marine-traffic/
+    Mqtt(String),
     /// A RTL-SDR dongle (require feature `rtlsdr`): the parameter can be empty, or use other specifiers, e.g. `rtlsdr://serial=00000001`
     Rtlsdr(Option<String>),
 }
@@ -57,6 +61,8 @@ impl FromStr for Source {
                 url.host_str().unwrap_or("153.44.253.27"),
                 url.port_or_known_default().unwrap_or(5631),
             ))),
+
+            "mqtt" => Address::Mqtt(url.host_str().unwrap_or("ship162").to_string()),
 
             "rtlsdr" => Address::Rtlsdr(url.host_str().map(|s| s.to_string())),
 

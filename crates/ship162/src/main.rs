@@ -17,9 +17,9 @@ use std::{path::PathBuf, sync::Arc};
 use tokio::{fs, io::AsyncWriteExt, sync::Mutex};
 use tracing_subscriber::{fmt, prelude::*, EnvFilter};
 
-use sources::tcp::TcpSource;
-
+use crate::sources::mqtt::MqttSource;
 use crate::sources::rtlsdr::RtlSdrSource;
+use crate::sources::tcp::TcpSource;
 use crate::tui::{Event, EventHandler};
 
 #[derive(Default, Deserialize, Parser)]
@@ -205,6 +205,22 @@ async fn main() -> Result<()> {
                     }
                 }
             }),
+            sources::Address::Mqtt(broker_url) => {
+                let mqtt_clone = tx.clone();
+                tokio::spawn(async move {
+                    let source = MqttSource::new(mqtt_clone, broker_url);
+                    tokio::select! {
+                        result = source.run() => {
+                            if let Err(e) = result {
+                                eprintln!("MQTT source error: {}", e);
+                            }
+                        }
+                        _ = shutdown_rx.recv() => {
+                            // Silent shutdown
+                        }
+                    }
+                })
+            }
             sources::Address::Rtlsdr(_) => {
                 let rtl_clone = tx.clone();
                 tokio::spawn(async move {
