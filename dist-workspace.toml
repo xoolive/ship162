@@ -17,7 +17,7 @@ targets = [
     "aarch64-unknown-linux-gnu",
     "x86_64-apple-darwin",
     "x86_64-unknown-linux-gnu",
-    "x86_64-unknown-linux-musl",
+    # "x86_64-unknown-linux-musl",
     "x86_64-pc-windows-msvc",
 ]
 # Which actions to run on pull requests
@@ -31,9 +31,10 @@ install-updater = true
 # Whether to pass --all-features to cargo build
 all-features = true
 
-[dist.dependencies.apt]
-musl-tools = "*"
-musl-dev = "*"
+# Let's try to fix the libusb issue later for x86_64-unknown-linux-musl
+# [dist.dependencies.apt]
+# musl-tools = "*"
+# musl-dev = "*"
 
 [dist.dependencies.chocolatey]
-openssl.light = "*"
+openssl = "*"
