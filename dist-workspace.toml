@@ -20,6 +20,8 @@ targets = [
     "x86_64-unknown-linux-musl",
     "x86_64-pc-windows-msvc",
 ]
+# Which actions to run on pull requests
+pr-run-mode = "upload"
 # Path that installers should place binaries in
 install-path = "CARGO_HOME"
 # Publish jobs to run in CI
@@ -28,3 +30,10 @@ publish-jobs = ["homebrew"]
 install-updater = true
 # Whether to pass --all-features to cargo build
 all-features = true
+
+[dist.dependencies.apt]
+musl-tools = "*"
+musl-dev = "*"
+
+[dist.dependencies.chocolatey]
+openssl.light = "*"
