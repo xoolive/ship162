@@ -19,7 +19,7 @@ rtlsdr = ['desperado/rtlsdr', 'rs162/rtlsdr']
 mqtt = ["rs162/mqtt"]
 
 [dependencies]
-rs162 = { path = "../rs162" }
+rs162 = { version = "0.1.0", path = "../rs162" }
 anyhow = "1.0"
 clap = { version = "4.5.51", features = ["color", "derive", "wrap_help", "env"] }
 crossterm = { version = "0.29", features = ["event-stream"] }
