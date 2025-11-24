@@ -5,6 +5,12 @@
 //! - parse NMEA AIVDM/AIVDO messages
 //!
 //! and to convert them to binary u8 data, then decode them to structured AIS messages.
+//!
+//! ## Feature Flags
+//!
+//! - **`rtlsdr`**: Enables the `RtlSdrReceiver` source for reading directly from USB RTL-SDR dongles.
+//! - **`mqtt`**: Enables the `MqttReceiver` source for connecting to AIS data streams over MQTT (e.g. Digitraffic).
+//!   *Disabled by default.*
 
 pub mod decode;
 pub mod dsp;

@@ -8,6 +8,7 @@
 //!
 
 pub mod iq;
+#[cfg(feature = "mqtt")]
 pub mod mqtt;
 pub mod nmea;
 pub mod nmea_ts;

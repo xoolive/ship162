@@ -11,6 +11,7 @@ use url::Url;
 
 use crate::state::AppState;
 
+#[cfg(feature = "mqtt")]
 pub mod mqtt;
 pub mod rtlsdr;
 pub mod tcp;
@@ -35,6 +36,7 @@ pub enum Address {
     /// Address to a TCP feed (e.g. `tcp://` defaults to the Norwegian AIS server, otherwise `tcp://ais.example.com:1234`)
     Tcp(AddressPath),
     /// Address to the Finnish Digitraffic MQTT broker (e.g. `mqtt://` defaults to `ship162` client ID, otherwise `mqtt://my_client_id`)
+    #[cfg(feature = "mqtt")]
     Mqtt(String),
     /// A RTL-SDR dongle (require feature `rtlsdr`): the parameter can be empty, or use other specifiers, e.g. `rtlsdr://serial=00000001`
     Rtlsdr(Option<String>),
@@ -60,9 +62,12 @@ impl FromStr for Source {
                 url.host_str().unwrap_or("153.44.253.27"),
                 url.port_or_known_default().unwrap_or(5631),
             ))),
-
+            #[cfg(feature = "mqtt")]
             "mqtt" => Address::Mqtt(url.host_str().unwrap_or("ship162").to_string()),
-
+            #[cfg(not(feature = "mqtt"))]
+            "mqtt" => {
+                return Err("MQTT support is not enabled. Compile with --features mqtt".to_string())
+            }
             "rtlsdr" => Address::Rtlsdr(url.host_str().map(|s| s.to_string())),
 
             _ => return Err("unsupported scheme".to_string()),

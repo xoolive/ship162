@@ -24,6 +24,11 @@ The ultimate goal is to create a complete maritime tracking solution that can re
 - **Real-time processing**: Efficient handling of live AIS data streams
 - **Multi-fragment messages**: Automatic assembly of multi-sentence AIS messages
 
+### Optional Features
+
+- **`rtlsdr`**: Support for real-time demodulation from RTL-SDR USB dongles (enabled via `desperado`).
+- **`mqtt`**: Support for connecting to MQTT brokers (e.g., Finnish Digitraffic). **Disabled by default**.
+
 ## Similar Projects
 
 - [AIS-catcher](https://github.com/jvde-github/AIS-catcher) in C++
@@ -49,7 +54,14 @@ This will make ship162 the maritime equivalent of rs1090 for aviation tracking.
 Run the following Cargo command in your project directory:
 
 ```sh
+# Standard installation
 cargo add rs162
+
+# With MQTT support
+cargo add rs162 --features mqtt
+
+# With RTL-SDR support
+cargo add rs162 --features rtlsdr
 ```
 
 Or add the following line to your `Cargo.toml`:
@@ -168,6 +180,9 @@ Real-time AIS data is freely available from the Norwegian Coastal Administration
 More information: <https://www.kystverket.no/en/sea-transport-and-ports/ais/access-to-ais-data/>
 
 ### Finnish Digitraffic MQTT Feed
+
+> [!NOTE]
+> You must compile the library or application with `--features mqtt` to access this source.
 
 Real-time AIS data is available via MQTT from Finnish Digitraffic:
 

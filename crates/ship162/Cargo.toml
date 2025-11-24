@@ -16,6 +16,7 @@ path = "src/main.rs"
 
 [features]
 rtlsdr = ['desperado/rtlsdr', 'rs162/rtlsdr']
+mqtt = ["rs162/mqtt"]
 
 [dependencies]
 rs162 = { path = "../rs162" }

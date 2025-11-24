@@ -17,6 +17,7 @@ use std::{path::PathBuf, sync::Arc};
 use tokio::{fs, io::AsyncWriteExt, sync::Mutex};
 use tracing_subscriber::{fmt, prelude::*, EnvFilter};
 
+#[cfg(feature = "mqtt")]
 use crate::sources::mqtt::MqttSource;
 use crate::sources::rtlsdr::RtlSdrSource;
 use crate::sources::tcp::TcpSource;
@@ -205,6 +206,7 @@ async fn main() -> Result<()> {
                     }
                 }
             }),
+            #[cfg(feature = "mqtt")]
             sources::Address::Mqtt(broker_url) => {
                 let mqtt_clone = tx.clone();
                 tokio::spawn(async move {
