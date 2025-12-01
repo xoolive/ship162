@@ -1806,9 +1806,9 @@ dependencies = [
 
 [[package]]
 name = "rtl-sdr-rs"
-version = "0.2.0"
+version = "0.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c5d26b3e8cd61d6b0bf5fb1683ffc50dea910b097754c9623be021188d4ebc6d"
+checksum = "595a48d5cb78bbc4775fe4c09fb502038be9f062eb374de14f391a61a3c0eac4"
 dependencies = [
  "byteorder",
  "log",
