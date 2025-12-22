@@ -8,7 +8,6 @@ mod tui;
 use anyhow::Result;
 use clap::Parser;
 use crossterm::event::{KeyCode, KeyModifiers};
-use desperado::rtlsdr::RtlSdrConfig;
 use redis::AsyncCommands;
 use rs162::dsp::ais::AIS_SAMPLE_RATE_288K;
 use serde::Deserialize;
@@ -17,11 +16,12 @@ use std::{path::PathBuf, sync::Arc};
 use tokio::{fs, io::AsyncWriteExt, sync::Mutex};
 use tracing_subscriber::{fmt, prelude::*, EnvFilter};
 
+use crate::sources::iq::Source;
 #[cfg(feature = "mqtt")]
 use crate::sources::mqtt::MqttSource;
-use crate::sources::rtlsdr::RtlSdrSource;
 use crate::sources::tcp::TcpSource;
 use crate::tui::{Event, EventHandler};
+use rs162::sources::AisAsyncIqSource;
 
 #[derive(Default, Deserialize, Parser)]
 #[command(
@@ -223,22 +223,81 @@ async fn main() -> Result<()> {
                     }
                 })
             }
+            #[cfg(feature = "pluto")]
+            sources::Address::Pluto(uri) => {
+                let pluto_clone = tx.clone();
+                let source =
+                    AisAsyncIqSource::from_pluto(&uri.unwrap(), AIS_SAMPLE_RATE_288K, 20.).await?;
+                tokio::spawn(async move {
+                    let mut source = Source::new(pluto_clone, source);
+                    tokio::select! {
+                        result = source.run() => {
+                            if let Err(e) = result {
+                                eprintln!("PlutoSDR source error: {}", e);
+                            }
+                        }
+                        _ = shutdown_rx.recv() => {
+                            // Silent shutdown
+                        }
+                    }
+                })
+            }
+            #[cfg(feature = "rtlsdr")]
             sources::Address::Rtlsdr(_) => {
                 let rtl_clone = tx.clone();
+                let source = AisAsyncIqSource::from_rtlsdr(0, AIS_SAMPLE_RATE_288K).await?;
                 tokio::spawn(async move {
-                    let source = RtlSdrSource::new(
-                        rtl_clone,
-                        RtlSdrConfig {
-                            device_index: 0,
-                            center_freq: 162_000_000,
-                            sample_rate: AIS_SAMPLE_RATE_288K,
-                            gain: Some(496),
-                        },
-                    );
+                    let mut source = Source::new(rtl_clone, source);
                     tokio::select! {
                         result = source.run() => {
                             if let Err(e) = result {
                                 eprintln!("RTL-SDR source error: {}", e);
+                            }
+                        }
+                        _ = shutdown_rx.recv() => {
+                            // Silent shutdown
+                        }
+                    }
+                })
+            }
+            #[cfg(feature = "soapy")]
+            sources::Address::Soapy(args) => {
+                let soapy_clone = tx.clone();
+                let source = AisAsyncIqSource::from_soapy(
+                    args.unwrap().as_str(),
+                    AIS_SAMPLE_RATE_288K,
+                    Some(40.0),
+                    "TUNER",
+                )
+                .await?;
+                tokio::spawn(async move {
+                    let mut source = Source::new(soapy_clone, source);
+                    tokio::select! {
+                        result = source.run() => {
+                            if let Err(e) = result {
+                                eprintln!("SoapySDR source error: {}", e);
+                            }
+                        }
+                        _ = shutdown_rx.recv() => {
+                            // Silent shutdown
+                        }
+                    }
+                })
+            }
+            sources::Address::IqFile(file) => {
+                let file_clone = tx.clone();
+                let source = AisAsyncIqSource::from_file(
+                    &file,
+                    AIS_SAMPLE_RATE_288K,
+                    desperado::IqFormat::Cu8,
+                )
+                .await?;
+                tokio::spawn(async move {
+                    let mut source = Source::new(file_clone, source);
+                    tokio::select! {
+                        result = source.run() => {
+                            if let Err(e) = result {
+                                eprintln!("IQ File source error: {}", e);
                             }
                         }
                         _ = shutdown_rx.recv() => {

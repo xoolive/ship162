@@ -1,9 +1,9 @@
-use rs162::{decode::mmsi::MmsiInfo, sources::rtlsdr::RtlSdrReceiver};
-use rtl_sdr_rs::error::Result;
+use desperado::Result;
+use rs162::{decode::mmsi::MmsiInfo, dsp::ais::AIS_SAMPLE_RATE_288K, sources::iq::AisIqSource};
 use serde_json::json;
 
 fn main() -> Result<()> {
-    let receiver = RtlSdrReceiver::new()?;
+    let receiver = AisIqSource::from_rtlsdr(0, AIS_SAMPLE_RATE_288K)?;
 
     for msg_res in receiver {
         match msg_res {

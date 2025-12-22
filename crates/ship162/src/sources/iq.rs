@@ -1,28 +1,24 @@
-use desperado::rtlsdr::RtlSdrConfig;
 use futures::StreamExt; // for .next().await
-use rs162::sources::rtlsdr::AsyncRtlSdrReceiver;
+use rs162::sources::iq::AisAsyncIqSource;
 use tokio::sync::mpsc::Sender;
 use tracing::info;
 
 use crate::sources::TimedMessage;
 
-pub struct RtlSdrSource {
+pub struct Source {
     tx: Sender<TimedMessage>,
-    config: RtlSdrConfig,
+    source: AisAsyncIqSource,
 }
 
-impl RtlSdrSource {
-    pub fn new(tx: Sender<TimedMessage>, config: RtlSdrConfig) -> Self {
-        Self { tx, config }
+impl Source {
+    pub fn new(tx: Sender<TimedMessage>, source: AisAsyncIqSource) -> Self {
+        Self { tx, source }
     }
 
-    pub async fn run(&self) -> anyhow::Result<()> {
-        info!("Starting RTL-SDR source...");
-        let mut receiver = AsyncRtlSdrReceiver::with_config(self.config.clone())
-            .await
-            .map_err(|e| anyhow::anyhow!("{:?}", e))?;
+    pub async fn run(&mut self) -> anyhow::Result<()> {
+        info!("Starting source...");
 
-        while let Some(msg_res) = receiver.next().await {
+        while let Some(msg_res) = self.source.next().await {
             if let Ok(msg) = msg_res {
                 if let Some(ais_msg) = msg.decode() {
                     let sentence = super::TimedMessage {

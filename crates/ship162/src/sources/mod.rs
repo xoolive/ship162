@@ -11,9 +11,9 @@ use url::Url;
 
 use crate::state::AppState;
 
+pub mod iq;
 #[cfg(feature = "mqtt")]
 pub mod mqtt;
-pub mod rtlsdr;
 pub mod tcp;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -39,7 +39,16 @@ pub enum Address {
     #[cfg(feature = "mqtt")]
     Mqtt(String),
     /// A RTL-SDR dongle (require feature `rtlsdr`): the parameter can be empty, or use other specifiers, e.g. `rtlsdr://serial=00000001`
+    #[cfg(feature = "rtlsdr")]
     Rtlsdr(Option<String>),
+    /// Any soapy source (require feature `soapy`)
+    #[cfg(feature = "soapy")]
+    Soapy(Option<String>),
+    /// An ADALM-PLUTO device (require feature `pluto`)
+    #[cfg(feature = "pluto")]
+    Pluto(Option<String>),
+    /// An IQ file source
+    IqFile(String),
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -68,7 +77,40 @@ impl FromStr for Source {
             "mqtt" => {
                 return Err("MQTT support is not enabled. Compile with --features mqtt".to_string())
             }
+
+            #[cfg(feature = "pluto")]
+            "pluto" => Address::Pluto(url.host_str().map(|s| s.to_string())),
+            #[cfg(not(feature = "pluto"))]
+            "pluto" => {
+                return Err(
+                    "Pluto SDR support is not enabled. Compile with --features pluto".to_string(),
+                )
+            }
+            #[cfg(feature = "rtlsdr")]
             "rtlsdr" => Address::Rtlsdr(url.host_str().map(|s| s.to_string())),
+            #[cfg(not(feature = "rtlsdr"))]
+            "rtlsdr" => {
+                return Err(
+                    "RTL-SDR support is not enabled. Compile with --features rtlsdr".to_string(),
+                )
+            }
+            #[cfg(feature = "soapy")]
+            "soapy" => Address::Soapy(url.host_str().map(|s| s.to_string())),
+            #[cfg(not(feature = "soapy"))]
+            "soapy" => {
+                return Err(
+                    "SoapySDR support is not enabled. Compile with --features soapy".to_string(),
+                )
+            }
+
+            "file" => {
+                let path = url
+                    .to_file_path()
+                    .map_err(|_| "invalid file path".to_string())?
+                    .to_string_lossy()
+                    .to_string();
+                Address::IqFile(path)
+            }
 
             _ => return Err("unsupported scheme".to_string()),
         };
