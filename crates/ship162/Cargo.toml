@@ -34,6 +34,6 @@ serde = "1.0.228"
 serde_json = "1.0.145"
 tokio = { version = "1", features = ["full"] }
 tracing = "0.1.43"
-toml = "0.9.8"
+toml = "0.9.10"
 tracing-subscriber = { version = "0.3.20", features = ["env-filter"] }
 url = "2.5.7"
