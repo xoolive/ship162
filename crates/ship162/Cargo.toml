@@ -28,7 +28,7 @@ dirs = "6.0.0"
 dotenv = "0.15.0"
 futures = "0.3"
 keepawake = "0.6.0"
-ratatui = "0.29"
+ratatui = "0.30"
 redis = { version = "0.32.7", features = ["tokio-comp"] }
 serde = "1.0.228"
 serde_json = "1.0.145"
