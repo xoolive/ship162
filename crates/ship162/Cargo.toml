@@ -33,7 +33,7 @@ redis = { version = "0.32.7", features = ["tokio-comp"] }
 serde = "1.0.228"
 serde_json = "1.0.145"
 tokio = { version = "1", features = ["full"] }
-tracing = "0.1.43"
+tracing = "0.1.44"
 toml = "0.9.10"
 tracing-subscriber = { version = "0.3.20", features = ["env-filter"] }
 url = "2.5.7"
