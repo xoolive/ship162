@@ -70,6 +70,143 @@ Or add the following line to your `Cargo.toml`:
 rs162 = "0.1.0"  # check for the latest version
 ```
 
+## Configuration File
+
+The `ship162` application supports TOML configuration files for defining multiple AIS data sources. This makes it easy to configure and manage different input sources without using command-line arguments.
+
+### Configuration File Locations
+
+The application searches for configuration files in the following locations (in priority order):
+
+1. Path specified by the `SHIP162_CONFIG` environment variable
+2. `$XDG_CONFIG_HOME/ship162/config.toml`
+3. `~/.config/ship162/config.toml`
+
+### Configuration Format
+
+```toml
+# Example configuration with multiple sources
+
+# RTL-SDR device by index
+[[sources]]
+rtlsdr = { device = 0 }
+gain = 49.6        # Recommended max gain for 162 MHz
+bias_tee = true    # Enable bias-tee if using powered antenna
+
+# RTL-SDR device by serial number
+[[sources]]
+rtlsdr = { serial = "00000001" }
+gain = 49.6
+
+# RTL-SDR device by manufacturer/product filter
+[[sources]]
+rtlsdr = { manufacturer = "Realtek", product = "RTL2838UHIDIR" }
+gain = 49.6
+
+# SoapySDR device (e.g., PlutoSDR, LimeSDR)
+[[sources]]
+soapy = "driver=rtlsdr"
+gain = 49.6
+gain_element = "TUNER"  # Optional: specify gain element
+bias_tee = false
+
+# PlutoSDR by IP address
+[[sources]]
+pluto = "192.168.2.1"
+gain = 73.0  # Maximum gain for PlutoSDR
+
+# TCP source (e.g., Norwegian Coastal Administration)
+[[sources]]
+tcp = "153.44.253.27:5631"
+
+# MQTT source (requires --features mqtt)
+[[sources]]
+mqtt = "mqtt://mqtt.digitraffic.fi"
+
+# I/Q sample file
+[[sources]]
+iqfile = "/path/to/samples.cf32"
+```
+
+### Configuration Options
+
+#### RTL-SDR Sources
+
+RTL-SDR devices can be selected by:
+
+- **Device index**: `rtlsdr = { device = 0 }`
+- **Serial number**: `rtlsdr = { serial = "00000001" }`
+- **Manufacturer/Product**: `rtlsdr = { manufacturer = "Realtek", product = "RTL2838UHIDIR" }`
+
+Common options:
+
+- `gain`: Gain in dB (recommended: 49.6 for max gain)
+- `bias_tee`: Enable/disable bias-tee (default: false)
+
+#### SoapySDR Sources
+
+SoapySDR sources use a driver string:
+
+- `soapy = "driver=rtlsdr"` for RTL-SDR via SoapySDR
+- `soapy = "driver=plutosdr"` for PlutoSDR via SoapySDR
+- `soapy = "driver=lime"` for LimeSDR
+
+Common options:
+
+- `gain`: Gain in dB
+- `gain_element`: Gain element name (default: "TUNER")
+- `bias_tee`: Enable/disable bias-tee
+
+#### PlutoSDR Sources
+
+PlutoSDR sources require an IP address or URI:
+
+- `pluto = "192.168.2.1"` or `pluto = "ip:192.168.2.1"`
+
+Common options:
+
+- `gain`: Gain in dB (recommended: 73.0 for AIS)
+
+#### TCP Sources
+
+TCP sources connect to a remote AIS feed:
+
+- `tcp = "host:port"`
+
+No additional configuration options.
+
+#### MQTT Sources
+
+MQTT sources connect to an MQTT broker (requires `--features mqtt`):
+
+- `mqtt = "mqtt://broker.example.com"`
+
+No additional configuration options.
+
+#### I/Q File Sources
+
+I/Q file sources read from a file containing raw I/Q samples:
+
+- `iqfile = "/path/to/file.cf32"`
+
+No additional configuration options.
+
+### Using Configuration Files
+
+Create a configuration file at `~/.config/ship162/config.toml` and run:
+
+```sh
+cargo run --release --features rtlsdr,soapy
+```
+
+Or specify a custom configuration file location:
+
+```sh
+SHIP162_CONFIG=/path/to/config.toml cargo run --release
+```
+
+See `config.toml.example` in the repository for a complete example with documentation.
+
 ## Usage
 
 ### Basic AIS Message Decoding
