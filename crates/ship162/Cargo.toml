@@ -22,7 +22,7 @@ mqtt = ["rs162/mqtt"]
 ssh = ["rs162/ssh"]
 
 [dependencies]
-rs162 = { version = "0.1.1", path = "../rs162" }
+rs162 = { version = "0.1.2", path = "../rs162" }
 anyhow = "1.0"
 clap = { version = "4.5.54", features = ["color", "derive", "wrap_help", "env"] }
 crossterm = { version = "0.29", features = ["event-stream"] }
