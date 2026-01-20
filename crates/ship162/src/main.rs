@@ -306,7 +306,7 @@ async fn main() -> Result<()> {
                     DeviceSelector::Index(0)
                 };
 
-                let ais_source = AisAsyncIqSource::from_rtlsdr_selector(
+                let ais_source = AisAsyncIqSource::from_rtlsdr(
                     device,
                     AIS_SAMPLE_RATE_288K,
                     Some(gain),

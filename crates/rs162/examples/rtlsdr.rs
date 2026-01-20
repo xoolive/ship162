@@ -1,9 +1,10 @@
-use desperado::Result;
+use desperado::{rtlsdr::DeviceSelector, Result};
 use rs162::{decode::mmsi::MmsiInfo, dsp::ais::AIS_SAMPLE_RATE_288K, sources::iq::AisIqSource};
 use serde_json::json;
 
 fn main() -> Result<()> {
-    let receiver = AisIqSource::from_rtlsdr(0, AIS_SAMPLE_RATE_288K, None, false)?;
+    let receiver =
+        AisIqSource::from_rtlsdr(DeviceSelector::Index(0), AIS_SAMPLE_RATE_288K, None, false)?;
 
     for msg_res in receiver {
         match msg_res {

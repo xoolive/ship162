@@ -100,13 +100,13 @@ impl AisIqSource {
 
     #[cfg(feature = "rtlsdr")]
     pub fn from_rtlsdr(
-        device_index: usize,
+        device: DeviceSelector,
         sample_rate: u32,
         gain: Option<f64>,
         bias_tee: bool,
     ) -> Result<Self> {
         let rtlsdr_config = RtlSdrConfig {
-            device: DeviceSelector::Index(device_index),
+            device,
             center_freq: AIS_FREQ,
             sample_rate,
             gain: gain.map(Gain::Manual).unwrap_or(Gain::Manual(RTLSDR_GAIN)),
@@ -266,24 +266,6 @@ impl AisAsyncIqSource {
 
     #[cfg(feature = "rtlsdr")]
     pub fn from_rtlsdr(
-        device_index: usize,
-        sample_rate: u32,
-        gain: Option<f64>,
-        bias_tee: bool,
-    ) -> impl std::future::Future<Output = Result<AisAsyncIqSource>> {
-        let rtlsdr_config = RtlSdrConfig {
-            device: DeviceSelector::Index(device_index),
-            center_freq: AIS_FREQ,
-            sample_rate,
-            gain: gain.map(Gain::Manual).unwrap_or(Gain::Manual(RTLSDR_GAIN)),
-            bias_tee,
-        };
-        let config = DeviceConfig::RtlSdr(rtlsdr_config);
-        Self::from_device_config(config, sample_rate)
-    }
-
-    #[cfg(feature = "rtlsdr")]
-    pub fn from_rtlsdr_selector(
         device: DeviceSelector,
         sample_rate: u32,
         gain: Option<f64>,
