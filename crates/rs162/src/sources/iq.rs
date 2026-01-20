@@ -2,7 +2,7 @@
 //!
 //! Formats with 16/32-bit samples are little-endian (Cs16, Cf32).
 
-use desperado::{IqAsyncSource, IqFormat, IqSource};
+use desperado::{IqAsyncSource, IqFormat, IqSource, Result};
 use futures::stream::StreamExt;
 use futures::Stream;
 use std::collections::VecDeque;
@@ -11,9 +11,28 @@ use std::pin::Pin;
 use std::task::{Context, Poll};
 use tokio::sync::mpsc;
 
+#[cfg(any(feature = "rtlsdr", feature = "soapy", feature = "pluto"))]
+use desperado::{DeviceConfig, Gain};
+
+#[cfg(feature = "pluto")]
+use desperado::pluto::PlutoConfig;
+#[cfg(feature = "rtlsdr")]
+use desperado::rtlsdr::{DeviceSelector, RtlSdrConfig};
+#[cfg(feature = "soapy")]
+use desperado::soapy::SoapyConfig;
+
 use crate::dsp::ais::{AisDemodulatedMessage, AisDemodulator};
 
 const DEFAULT_CHUNK_SAMPLES: usize = 8192;
+const AIS_FREQ: u32 = 162_000_000;
+
+// Recommended gain settings for AIS reception (max gain is best for 162 MHz)
+#[cfg(feature = "rtlsdr")]
+const RTLSDR_GAIN: f64 = 49.6; // Maximum gain for RTL-SDR
+#[cfg(feature = "soapy")]
+const SOAPY_GAIN: f64 = 49.6; // Maximum gain, same as RTL-SDR
+#[cfg(feature = "pluto")]
+const PLUTO_GAIN: f64 = 73.0; // Maximum gain for PlutoSDR
 
 pub struct AisIqSource {
     source: IqSource,
@@ -30,19 +49,9 @@ impl AisIqSource {
         }
     }
 
-    pub fn from_file<P: AsRef<Path>>(
-        path: P,
-        sample_rate: u32,
-        format: IqFormat,
-    ) -> Result<Self, std::io::Error> {
-        let center_freq = 162_000_000;
-        let source = IqSource::from_file(
-            path,
-            center_freq,
-            sample_rate,
-            DEFAULT_CHUNK_SAMPLES,
-            format,
-        )?;
+    pub fn from_file<P: AsRef<Path>>(path: P, sample_rate: u32, format: IqFormat) -> Result<Self> {
+        let source =
+            IqSource::from_file(path, AIS_FREQ, sample_rate, DEFAULT_CHUNK_SAMPLES, format)?;
         Ok(Self {
             source,
             demodulator: AisDemodulator::new(sample_rate),
@@ -50,17 +59,11 @@ impl AisIqSource {
         })
     }
 
-    pub fn from_tcp(
-        addr: &str,
-        port: u16,
-        sample_rate: u32,
-        format: IqFormat,
-    ) -> Result<Self, std::io::Error> {
-        let center_freq = 162_000_000;
+    pub fn from_tcp(addr: &str, port: u16, sample_rate: u32, format: IqFormat) -> Result<Self> {
         let source = IqSource::from_tcp(
             addr,
             port,
-            center_freq,
+            AIS_FREQ,
             sample_rate,
             DEFAULT_CHUNK_SAMPLES,
             format,
@@ -72,7 +75,70 @@ impl AisIqSource {
         })
     }
 
-    pub fn next_message(&mut self) -> Option<Result<AisDemodulatedMessage, std::io::Error>> {
+    /// Create an AIS IQ source from a DeviceConfig for SDR devices
+    #[cfg(any(feature = "rtlsdr", feature = "soapy", feature = "pluto"))]
+    pub fn from_device_config(config: DeviceConfig, sample_rate: u32) -> Result<Self> {
+        let source = IqSource::from_device_config(config)?;
+        Ok(Self {
+            source,
+            demodulator: AisDemodulator::new(sample_rate),
+            message_buffer: VecDeque::new(),
+        })
+    }
+
+    #[cfg(feature = "pluto")]
+    pub fn from_pluto(uri: &str, sample_rate: u32, gain: Option<f64>) -> Result<Self> {
+        let pluto_config = PlutoConfig {
+            uri: uri.to_string(),
+            center_freq: AIS_FREQ as i64,
+            sample_rate: sample_rate as i64,
+            gain: gain.map(Gain::Manual).unwrap_or(Gain::Manual(PLUTO_GAIN)),
+        };
+        let config = DeviceConfig::Pluto(pluto_config);
+        Self::from_device_config(config, sample_rate)
+    }
+
+    #[cfg(feature = "rtlsdr")]
+    pub fn from_rtlsdr(
+        device: DeviceSelector,
+        sample_rate: u32,
+        gain: Option<f64>,
+        bias_tee: bool,
+    ) -> Result<Self> {
+        let rtlsdr_config = RtlSdrConfig {
+            device,
+            center_freq: AIS_FREQ,
+            sample_rate,
+            gain: gain.map(Gain::Manual).unwrap_or(Gain::Manual(RTLSDR_GAIN)),
+            bias_tee,
+        };
+        let config = DeviceConfig::RtlSdr(rtlsdr_config);
+        Self::from_device_config(config, sample_rate)
+    }
+
+    #[cfg(feature = "soapy")]
+    pub fn from_soapy(
+        args: &str,
+        channel: usize,
+        sample_rate: u32,
+        gain: Option<f64>,
+        gain_element: &str,
+        bias_tee: bool,
+    ) -> Result<Self> {
+        let soapy_config = SoapyConfig {
+            args: args.to_string(),
+            center_freq: AIS_FREQ as f64,
+            sample_rate: sample_rate as f64,
+            channel,
+            gain: gain.map(Gain::Manual).unwrap_or(Gain::Manual(SOAPY_GAIN)),
+            gain_element: gain_element.to_string(),
+            bias_tee,
+        };
+        let config = DeviceConfig::Soapy(soapy_config);
+        Self::from_device_config(config, sample_rate)
+    }
+
+    pub fn next_message(&mut self) -> Option<Result<AisDemodulatedMessage>> {
         if let Some(msg) = self.message_buffer.pop_front() {
             return Some(Ok(msg));
         }
@@ -97,7 +163,7 @@ impl AisIqSource {
 }
 
 impl Iterator for AisIqSource {
-    type Item = Result<AisDemodulatedMessage, std::io::Error>;
+    type Item = Result<AisDemodulatedMessage>;
 
     fn next(&mut self) -> Option<Self::Item> {
         self.next_message()
@@ -106,13 +172,13 @@ impl Iterator for AisIqSource {
 
 pub struct AisAsyncIqSource {
     pub handle: tokio::task::JoinHandle<()>,
-    rx: mpsc::Receiver<Result<AisDemodulatedMessage, std::io::Error>>,
+    rx: mpsc::Receiver<Result<AisDemodulatedMessage>>,
 }
 
 impl AisAsyncIqSource {
     pub fn new(
         handle: tokio::task::JoinHandle<()>,
-        rx: mpsc::Receiver<Result<AisDemodulatedMessage, std::io::Error>>,
+        rx: mpsc::Receiver<Result<AisDemodulatedMessage>>,
     ) -> Self {
         Self { handle, rx }
     }
@@ -121,13 +187,12 @@ impl AisAsyncIqSource {
         path: P,
         sample_rate: u32,
         format: IqFormat,
-    ) -> impl std::future::Future<Output = Result<AisAsyncIqSource, std::io::Error>> {
-        let (tx, rx) = mpsc::channel::<Result<AisDemodulatedMessage, std::io::Error>>(32);
-        let center_freq = 162_000_000;
+    ) -> impl std::future::Future<Output = Result<AisAsyncIqSource>> {
+        let (tx, rx) = mpsc::channel::<Result<AisDemodulatedMessage>>(32);
         async move {
             let source = IqAsyncSource::from_file(
                 path,
-                center_freq,
+                AIS_FREQ,
                 sample_rate,
                 DEFAULT_CHUNK_SAMPLES,
                 format,
@@ -139,10 +204,9 @@ impl AisAsyncIqSource {
     }
 
     pub fn from_stdin(sample_rate: u32, format: IqFormat) -> AisAsyncIqSource {
-        let (tx, rx) = mpsc::channel::<Result<AisDemodulatedMessage, std::io::Error>>(32);
-        let center_freq = 162_000_000;
+        let (tx, rx) = mpsc::channel::<Result<AisDemodulatedMessage>>(32);
         let source =
-            IqAsyncSource::from_stdin(center_freq, sample_rate, DEFAULT_CHUNK_SAMPLES, format);
+            IqAsyncSource::from_stdin(AIS_FREQ, sample_rate, DEFAULT_CHUNK_SAMPLES, format);
         let handle = spawn_demodulator_task(source, tx, sample_rate);
         AisAsyncIqSource { handle, rx }
     }
@@ -152,15 +216,14 @@ impl AisAsyncIqSource {
         port: u16,
         sample_rate: u32,
         format: IqFormat,
-    ) -> impl std::future::Future<Output = Result<AisAsyncIqSource, std::io::Error>> + '_ {
+    ) -> impl std::future::Future<Output = Result<AisAsyncIqSource>> + '_ {
         let addr = addr.to_string();
-        let (tx, rx) = mpsc::channel::<Result<AisDemodulatedMessage, std::io::Error>>(32);
-        let center_freq = 162_000_000;
+        let (tx, rx) = mpsc::channel::<Result<AisDemodulatedMessage>>(32);
         async move {
             let source = IqAsyncSource::from_tcp(
                 &addr,
                 port,
-                center_freq,
+                AIS_FREQ,
                 sample_rate,
                 DEFAULT_CHUNK_SAMPLES,
                 format,
@@ -170,10 +233,79 @@ impl AisAsyncIqSource {
             Ok(AisAsyncIqSource { handle, rx })
         }
     }
+
+    /// Create an async AIS IQ source from a DeviceConfig for SDR devices
+    #[cfg(any(feature = "rtlsdr", feature = "soapy", feature = "pluto"))]
+    pub fn from_device_config(
+        config: DeviceConfig,
+        sample_rate: u32,
+    ) -> impl std::future::Future<Output = Result<AisAsyncIqSource>> {
+        let (tx, rx) = mpsc::channel::<Result<AisDemodulatedMessage>>(32);
+        async move {
+            let source = IqAsyncSource::from_device_config(&config).await?;
+            let handle = spawn_demodulator_task(source, tx, sample_rate);
+            Ok(AisAsyncIqSource { handle, rx })
+        }
+    }
+
+    #[cfg(feature = "pluto")]
+    pub fn from_pluto(
+        uri: &str,
+        sample_rate: u32,
+        gain: Option<f64>,
+    ) -> impl std::future::Future<Output = Result<AisAsyncIqSource>> + '_ {
+        let pluto_config = PlutoConfig {
+            uri: uri.to_string(),
+            center_freq: AIS_FREQ as i64,
+            sample_rate: sample_rate as i64,
+            gain: gain.map(Gain::Manual).unwrap_or(Gain::Manual(PLUTO_GAIN)),
+        };
+        let config = DeviceConfig::Pluto(pluto_config);
+        Self::from_device_config(config, sample_rate)
+    }
+
+    #[cfg(feature = "rtlsdr")]
+    pub fn from_rtlsdr(
+        device: DeviceSelector,
+        sample_rate: u32,
+        gain: Option<f64>,
+        bias_tee: bool,
+    ) -> impl std::future::Future<Output = Result<AisAsyncIqSource>> {
+        let rtlsdr_config = RtlSdrConfig {
+            device,
+            center_freq: AIS_FREQ,
+            sample_rate,
+            gain: gain.map(Gain::Manual).unwrap_or(Gain::Manual(RTLSDR_GAIN)),
+            bias_tee,
+        };
+        let config = DeviceConfig::RtlSdr(rtlsdr_config);
+        Self::from_device_config(config, sample_rate)
+    }
+
+    #[cfg(feature = "soapy")]
+    pub fn from_soapy(
+        args: &str,
+        sample_rate: u32,
+        gain: Option<f64>,
+        gain_element: &str,
+        bias_tee: bool,
+    ) -> impl std::future::Future<Output = Result<AisAsyncIqSource>> {
+        let soapy_config = SoapyConfig {
+            args: args.to_string(),
+            center_freq: AIS_FREQ as f64,
+            sample_rate: sample_rate as f64,
+            channel: 0,
+            gain: gain.map(Gain::Manual).unwrap_or(Gain::Manual(SOAPY_GAIN)),
+            gain_element: gain_element.to_string(),
+            bias_tee,
+        };
+        let config = DeviceConfig::Soapy(soapy_config);
+        Self::from_device_config(config, sample_rate)
+    }
 }
 
 impl Stream for AisAsyncIqSource {
-    type Item = Result<AisDemodulatedMessage, std::io::Error>;
+    type Item = Result<AisDemodulatedMessage>;
 
     fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
         self.rx.poll_recv(cx)
@@ -182,7 +314,7 @@ impl Stream for AisAsyncIqSource {
 
 pub fn spawn_demodulator_task(
     mut source: IqAsyncSource,
-    tx: mpsc::Sender<Result<AisDemodulatedMessage, std::io::Error>>,
+    tx: mpsc::Sender<Result<AisDemodulatedMessage>>,
     sample_rate: u32,
 ) -> tokio::task::JoinHandle<()> {
     tokio::spawn(async move {

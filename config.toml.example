@@ -1,0 +1,139 @@
+# Ship162 Configuration File Example
+#
+# This file demonstrates all available configuration options for ship162.
+# Copy this file to one of the following locations:
+#   - $SHIP162_CONFIG (environment variable pointing to config file)
+#   - $XDG_CONFIG_HOME/ship162/config.toml
+#   - ~/.config/ship162/config.toml
+
+# Output file for received AIS messages in JSON format
+# output = "/tmp/ais_messages.json"
+
+# Logging configuration
+# log_file = "/tmp/ship162.log"  # Use "-" for stdout (only in non-interactive mode)
+
+# Prevent computer from sleeping while decoding
+prevent_sleep = false
+
+# Redis configuration for message publishing
+# redis_url = "redis://localhost:6379"
+# redis_topic = "ship162"
+
+# Multiple sources can be defined. Each [[sources]] section defines one source.
+
+# --- RTL-SDR Examples ---
+
+# Example 1: RTL-SDR with device index
+[[sources]]
+rtlsdr = { device = 0 }
+gain = 49.6        # Recommended gain for AIS reception (default: 49.6)
+bias_tee = false   # Enable to power external LNA (default: false)
+
+# Example 2: RTL-SDR with serial number
+# [[sources]]
+# rtlsdr = { serial = "00000001" }
+# gain = 49.6
+# bias_tee = true   # Enable bias-tee for external LNA
+
+# Example 3: RTL-SDR with manufacturer/product filters
+# [[sources]]
+# rtlsdr = { manufacturer = "Realtek", product = "RTL2838", serial = "00000001" }
+# gain = 49.6
+
+# --- SoapySDR Examples ---
+
+# Example 4: SoapySDR source
+# [[sources]]
+# soapy = "driver=rtlsdr"
+# gain = 49.6
+# gain_element = "TUNER"  # SoapySDR gain element (default: "TUNER")
+# bias_tee = false
+
+# --- PlutoSDR Examples ---
+
+# Example 5: PlutoSDR with IP address
+# [[sources]]
+# pluto = "192.168.2.1"
+# gain = 73.0  # Recommended gain for PlutoSDR (default: 73.0)
+
+# Example 6: PlutoSDR with USB
+# [[sources]]
+# pluto = "usb:1"
+# gain = 73.0
+
+# --- IQ File Source ---
+
+# Example 7: IQ file replay
+# [[sources]]
+# iqfile = "/path/to/recording.iq"
+
+# --- TCP Source ---
+
+# Example 8: TCP source (Norwegian AIS server)
+[[sources]]
+tcp = "153.44.253.27:5631"
+
+# Example 9: TCP source with SSH tunnel (requires ssh feature)
+# [[sources]]
+# tcp = { host = "remote-ais-server.example.com", port = 5631, jump = "jumphost.example.com" }
+
+# or more simply
+# tcp.host = "153.44.253.27"
+# tcp.port = 5631
+# tcp.jump = "jumphost"
+
+# --- MQTT Source ---
+
+# Example 10: MQTT source (Finnish Digitraffic broker)
+[[sources]]
+mqtt = "mqtt://mqtt.digitraffic.fi"
+
+
+# ========== GAIN RECOMMENDATIONS ==========
+#
+# For AIS reception at 162 MHz, maximum gain is recommended:
+#
+# RTL-SDR:  49.6 dB (maximum gain)
+# SoapySDR: 49.6 dB (when using RTL-SDR driver)
+# PlutoSDR: 73.0 dB (maximum gain)
+#
+# These defaults are used when gain is not specified.
+#
+# You may need to adjust gain based on:
+# - Your antenna setup
+# - Local interference levels
+# - Distance from transmitters
+# - Use of external LNA (Low Noise Amplifier)
+#
+# ========== BIAS-TEE SUPPORT ==========
+#
+# Bias-tee provides power to external LNAs through the antenna cable.
+# Only supported on RTL-SDR and SoapySDR devices.
+# 
+# WARNING: Only enable bias-tee if you have an LNA that requires it!
+# Enabling bias-tee on devices without LNA protection can damage equipment.
+#
+# bias_tee = true   # Enable 5V bias-tee power
+# bias_tee = false  # Disable (default)
+
+# ========== SSH TUNNELING ==========
+#
+# SSH tunneling allows secure connections to remote AIS sources through jump hosts.
+# Requires the 'ssh' feature to be enabled: cargo build --features ssh
+#
+# Configuration uses standard SSH setup:
+# - ~/.ssh/config   - SSH client configuration
+# - ~/.ssh/known_hosts - Host verification keys
+# - ~/.ssh/id_* - SSH keys for authentication
+#
+# Example SSH config (~/.ssh/config):
+#
+#   Host jumphost.example.com
+#     User myuser
+#     IdentityFile ~/.ssh/id_ed25519
+#
+# TCP source with SSH tunnel:
+#   tcp = { host = "remote-server", port = 5631, jump = "jumphost.example.com" }
+#
+# The 'jump' parameter refers to a hostname in your ~/.ssh/config or a direct hostname.
+

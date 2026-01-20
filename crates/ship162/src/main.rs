@@ -8,7 +8,6 @@ mod tui;
 use anyhow::Result;
 use clap::Parser;
 use crossterm::event::{KeyCode, KeyModifiers};
-use desperado::rtlsdr::RtlSdrConfig;
 use redis::AsyncCommands;
 use rs162::dsp::ais::AIS_SAMPLE_RATE_288K;
 use serde::Deserialize;
@@ -17,11 +16,12 @@ use std::{path::PathBuf, sync::Arc};
 use tokio::{fs, io::AsyncWriteExt, sync::Mutex};
 use tracing_subscriber::{fmt, prelude::*, EnvFilter};
 
+use crate::sources::iq::Source;
 #[cfg(feature = "mqtt")]
 use crate::sources::mqtt::MqttSource;
-use crate::sources::rtlsdr::RtlSdrSource;
 use crate::sources::tcp::TcpSource;
 use crate::tui::{Event, EventHandler};
+use rs162::sources::AisAsyncIqSource;
 
 #[derive(Default, Deserialize, Parser)]
 #[command(
@@ -29,11 +29,22 @@ use crate::tui::{Event, EventHandler};
     about = "A lightweight AIS receiver and viewer using RTL-SDR and TCP sources"
 )]
 struct Options {
+    /// Activate JSON output to stdout
+    #[arg(short, long, default_value = "false")]
+    #[serde(default)]
+    verbose: bool,
+
+    /// Display a table in interactive mode (not compatible with verbose)
+    #[arg(short, long, default_value = "false")]
+    #[serde(default)]
+    interactive: bool,
+
     /// Output file to write received messages in JSON format
     #[arg(short, long)]
     output: Option<String>,
 
     /// List the sources of data
+    #[serde(default)]
     sources: Vec<sources::Source>,
 
     /// logging file, use "-" for stdout (only in non-interactive mode)
@@ -41,7 +52,8 @@ struct Options {
     log_file: Option<String>,
 
     /// Prevent the computer sleeping when decoding is in progress
-    #[arg(long, default_value=None)]
+    #[arg(long, default_value = "false")]
+    #[serde(default)]
     prevent_sleep: bool,
 
     /// Publish messages to a Redis pubsub
@@ -81,6 +93,12 @@ async fn main() -> Result<()> {
     }
 
     let mut cli_options = Options::parse();
+    if cli_options.verbose {
+        options.verbose = true;
+    }
+    if cli_options.interactive {
+        options.interactive = true;
+    }
     if cli_options.output.is_some() {
         options.output = cli_options.output;
     }
@@ -98,12 +116,12 @@ async fn main() -> Result<()> {
     }
     options.sources.append(&mut cli_options.sources);
 
-    // example: RUST_LOG=rs1090=DEBUG
+    // example: RUST_LOG=rs162=DEBUG
     let env_filter = EnvFilter::from_default_env();
 
     let subscriber = tracing_subscriber::registry().with(env_filter);
     match options.log_file.as_deref() {
-        Some("-") /*if !cli_options.interactive*/ => {
+        Some("-") if !options.interactive => {
             // when it's interactive, logs will disrupt the display
             subscriber.with(fmt::layer().pretty()).init();
         }
@@ -146,8 +164,12 @@ async fn main() -> Result<()> {
         false => None,
     };
 
-    // Initialize terminal
-    let mut terminal = tui::init()?;
+    // Initialize terminal if interactive mode
+    let terminal = if options.interactive {
+        Some(tui::init()?)
+    } else {
+        None
+    };
 
     // Create application state wrapped in Arc<Mutex<>> for sharing
     let state = Arc::new(Mutex::new(AppState::new()));
@@ -192,7 +214,15 @@ async fn main() -> Result<()> {
                     sources::AddressPath::Long(addr) => {
                         let host = addr.host;
                         let port = addr.port;
+                        #[cfg(feature = "ssh")]
+                        let source = if let Some(jump) = addr.jump {
+                            TcpSource::with_jump(tcp_clone, host, port, jump)
+                        } else {
+                            TcpSource::new(tcp_clone, host, port)
+                        };
+                        #[cfg(not(feature = "ssh"))]
                         let source = TcpSource::new(tcp_clone, host, port);
+
                         tokio::select! {
                             result = source.run() => {
                                 if let Err(e) = result {
@@ -223,18 +253,68 @@ async fn main() -> Result<()> {
                     }
                 })
             }
-            sources::Address::Rtlsdr(_) => {
-                let rtl_clone = tx.clone();
+            #[cfg(feature = "pluto")]
+            sources::Address::Pluto(pluto_path) => {
+                let pluto_clone = tx.clone();
+                let uri = pluto_path.pluto.clone();
+
+                // Get gain from source config or use default
+                let gain = source.gain.unwrap_or(sources::AIS_PLUTO_GAIN);
+
+                let ais_source =
+                    AisAsyncIqSource::from_pluto(&uri, AIS_SAMPLE_RATE_288K, Some(gain)).await?;
                 tokio::spawn(async move {
-                    let source = RtlSdrSource::new(
-                        rtl_clone,
-                        RtlSdrConfig {
-                            device_index: 0,
-                            center_freq: 162_000_000,
-                            sample_rate: AIS_SAMPLE_RATE_288K,
-                            gain: Some(496),
-                        },
-                    );
+                    let mut source = Source::new(pluto_clone, ais_source);
+                    tokio::select! {
+                        result = source.run() => {
+                            if let Err(e) = result {
+                                eprintln!("PlutoSDR source error: {}", e);
+                            }
+                        }
+                        _ = shutdown_rx.recv() => {
+                            // Silent shutdown
+                        }
+                    }
+                })
+            }
+            #[cfg(feature = "rtlsdr")]
+            sources::Address::Rtlsdr(rtl_path) => {
+                use desperado::rtlsdr::DeviceSelector;
+                let rtl_clone = tx.clone();
+
+                // Get gain and bias_tee from source config or use defaults
+                let gain = source.gain.unwrap_or(sources::AIS_RTLSDR_GAIN);
+                let bias_tee = source.bias_tee.unwrap_or(false);
+
+                // Determine device selector based on config
+                let config = &rtl_path.config;
+                let device = if let Some(idx) = config.device {
+                    // Device index specified
+                    DeviceSelector::Index(idx)
+                } else if config.serial.is_some()
+                    || config.manufacturer.is_some()
+                    || config.product.is_some()
+                {
+                    // At least one filter specified
+                    DeviceSelector::Filter {
+                        manufacturer: config.manufacturer.clone(),
+                        product: config.product.clone(),
+                        serial: config.serial.clone(),
+                    }
+                } else {
+                    // Empty config, default to device 0
+                    DeviceSelector::Index(0)
+                };
+
+                let ais_source = AisAsyncIqSource::from_rtlsdr(
+                    device,
+                    AIS_SAMPLE_RATE_288K,
+                    Some(gain),
+                    bias_tee,
+                )
+                .await?;
+                tokio::spawn(async move {
+                    let mut source = Source::new(rtl_clone, ais_source);
                     tokio::select! {
                         result = source.run() => {
                             if let Err(e) = result {
@@ -247,54 +327,110 @@ async fn main() -> Result<()> {
                     }
                 })
             }
+            #[cfg(feature = "soapy")]
+            sources::Address::Soapy(soapy_path) => {
+                let soapy_clone = tx.clone();
+                let args = soapy_path.soapy.clone();
+
+                // Get configuration from source or use defaults
+                let gain = source.gain.unwrap_or(sources::AIS_RTLSDR_GAIN);
+                let bias_tee = source.bias_tee.unwrap_or(false);
+                let gain_element = source.gain_element.as_deref().unwrap_or("TUNER");
+
+                let ais_source = AisAsyncIqSource::from_soapy(
+                    &args,
+                    AIS_SAMPLE_RATE_288K,
+                    Some(gain),
+                    gain_element,
+                    bias_tee,
+                )
+                .await?;
+                tokio::spawn(async move {
+                    let mut source = Source::new(soapy_clone, ais_source);
+                    tokio::select! {
+                        result = source.run() => {
+                            if let Err(e) = result {
+                                eprintln!("SoapySDR source error: {}", e);
+                            }
+                        }
+                        _ = shutdown_rx.recv() => {
+                            // Silent shutdown
+                        }
+                    }
+                })
+            }
+            sources::Address::IqFile(file) => {
+                let file_clone = tx.clone();
+                let source = AisAsyncIqSource::from_file(
+                    &file,
+                    AIS_SAMPLE_RATE_288K,
+                    desperado::IqFormat::Cu8,
+                )
+                .await?;
+                tokio::spawn(async move {
+                    let mut source = Source::new(file_clone, source);
+                    tokio::select! {
+                        result = source.run() => {
+                            if let Err(e) = result {
+                                eprintln!("IQ File source error: {}", e);
+                            }
+                        }
+                        _ = shutdown_rx.recv() => {
+                            // Silent shutdown
+                        }
+                    }
+                })
+            }
         };
         src_handles.push(handle);
     }
 
-    // Create event handler
-    let size = terminal.size()?;
-    let mut events = EventHandler::new(size.width);
+    // Create event handler and UI task if in interactive mode
+    let ui_handle = if let Some(mut terminal) = terminal {
+        let size = terminal.size()?;
+        let mut events = EventHandler::new(size.width);
+        let terminal_state = state.clone();
 
-    let terminal_state = state.clone();
+        Some(tokio::spawn(async move {
+            loop {
+                // Lock state for rendering
+                let state_guard = terminal_state.lock().await;
+                terminal.draw(|frame| table::render(frame, &state_guard))?;
+                drop(state_guard); // Release lock before waiting for events
 
-    // Main application loop
-    let ui_handle = tokio::spawn(async move {
-        loop {
-            // Lock state for rendering
-            let state_guard = terminal_state.lock().await;
-            terminal.draw(|frame| table::render(frame, &state_guard))?;
-            drop(state_guard); // Release lock before waiting for events
-
-            match events.next().await? {
-                Event::Key(key) => match key.code {
-                    KeyCode::Char('q') | KeyCode::Char('Q') => {
+                match events.next().await? {
+                    Event::Key(key) => match key.code {
+                        KeyCode::Char('q') | KeyCode::Char('Q') => {
+                            break;
+                        }
+                        KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                            break;
+                        }
+                        KeyCode::Char('j') | KeyCode::Down => {
+                            let max_visible = terminal.size()?.height.saturating_sub(5) as usize;
+                            let mut state_guard = terminal_state.lock().await;
+                            state_guard.scroll_down(max_visible);
+                        }
+                        KeyCode::Char('k') | KeyCode::Up => {
+                            let mut state_guard = terminal_state.lock().await;
+                            state_guard.scroll_up();
+                        }
+                        _ => {}
+                    },
+                    Event::Tick(_width) => {
+                        // State is updated by the TCP source task
+                    }
+                    Event::Error => {
                         break;
                     }
-                    KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => {
-                        break;
-                    }
-                    KeyCode::Char('j') | KeyCode::Down => {
-                        let max_visible = terminal.size()?.height.saturating_sub(5) as usize;
-                        let mut state_guard = terminal_state.lock().await;
-                        state_guard.scroll_down(max_visible);
-                    }
-                    KeyCode::Char('k') | KeyCode::Up => {
-                        let mut state_guard = terminal_state.lock().await;
-                        state_guard.scroll_up();
-                    }
-                    _ => {}
-                },
-                Event::Tick(_width) => {
-                    // State is updated by the TCP source task
-                }
-                Event::Error => {
-                    break;
                 }
             }
-        }
-        // Restore terminal
-        tui::restore()
-    });
+            // Restore terminal
+            tui::restore()
+        }))
+    } else {
+        None
+    };
 
     let mut file = if let Some(output_path) = options.output {
         let output_path = expanduser(PathBuf::from(output_path));
@@ -309,26 +445,47 @@ async fn main() -> Result<()> {
         None
     };
 
-    // Use tokio::select! to handle both message processing and UI completion
-    tokio::select! {
-        _ = async {
-            while let Some(mut message) = rx.recv().await {
-                let state_guard = state.lock().await;
-                sources::process_sentence(state_guard, &mut message).await;
-                if let Ok(json) = serde_json::to_string(&message) {
-                    if let Some(file) = &mut file {
-                        let _ = file.write_all(json.as_bytes()).await;
-                        let _ = file.write_all(b"\n").await;
-                    }
-                    if let Some(c) = &mut redis_connect {
-                        let _: () = c.publish(redis_topic.clone(), json).await.unwrap();
+    // Use tokio::select! to handle message processing and optional UI
+    if let Some(ui_handle) = ui_handle {
+        // Interactive mode: wait for either UI exit or message processing
+        tokio::select! {
+            _ = async {
+                while let Some(mut message) = rx.recv().await {
+                    let state_guard = state.lock().await;
+                    sources::process_sentence(state_guard, &mut message).await;
+                    if let Ok(json) = serde_json::to_string(&message) {
+                        if let Some(file) = &mut file {
+                            let _ = file.write_all(json.as_bytes()).await;
+                            let _ = file.write_all(b"\n").await;
+                        }
+                        if let Some(c) = &mut redis_connect {
+                            let _: () = c.publish(redis_topic.clone(), json).await.unwrap();
+                        }
                     }
                 }
+            } => {},
+            _ = ui_handle => {
+                // UI has exited, send shutdown signal
+                let _ = shutdown_tx.send(());
             }
-        } => {},
-        _ = ui_handle => {
-            // UI has exited, send shutdown signal
-            let _ = shutdown_tx.send(());
+        }
+    } else {
+        // Non-interactive mode: just process messages
+        while let Some(mut message) = rx.recv().await {
+            let state_guard = state.lock().await;
+            sources::process_sentence(state_guard, &mut message).await;
+            if let Ok(json) = serde_json::to_string(&message) {
+                if options.verbose {
+                    println!("{json}");
+                }
+                if let Some(file) = &mut file {
+                    let _ = file.write_all(json.as_bytes()).await;
+                    let _ = file.write_all(b"\n").await;
+                }
+                if let Some(c) = &mut redis_connect {
+                    let _: () = c.publish(redis_topic.clone(), json).await.unwrap();
+                }
+            }
         }
     }
 
