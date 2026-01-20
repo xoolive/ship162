@@ -23,3 +23,15 @@ publish-jobs = ["homebrew"]
 install-updater = true
 # Features to pass to cargo build
 features = ["mqtt", "rtlsdr"]
+
+[dist.dependencies.apt]
+libusb-dev = "*"
+
+[dist.dependencies.homebrew]
+libusb = { stage = ["build", "run"] }
+
+[dist.github-custom-runners]
+global = "ubuntu-latest"
+aarch64-apple-darwin = "macos-14"
+aarch64-unknown-linux-gnu = "ubuntu-22.04-arm"
+x86_64-unknown-linux-gnu = "ubuntu-22.04"
