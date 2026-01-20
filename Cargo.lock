@@ -821,9 +821,9 @@ dependencies = [
 
 [[package]]
 name = "desperado"
-version = "0.1.2"
+version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4c4ecb5aabe613b6ce6fe873924dcc303bde64107979b852f3d1dcdc839c355e"
+checksum = "dc7f5fd0e0fc48b1d8834d2e891f9a558e8216f08c6a1f8ccc681dbd7ee408ed"
 dependencies = [
  "dirs",
  "futures",
@@ -831,6 +831,7 @@ dependencies = [
  "num-complex",
  "pluto-sdr",
  "rtl-sdr-rs",
+ "rusb",
  "soapysdr",
  "tokio",
 ]

@@ -5,7 +5,7 @@ use serde_json::json;
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    let mut receiver = AisAsyncIqSource::from_rtlsdr(0, AIS_SAMPLE_RATE_288K).await?;
+    let mut receiver = AisAsyncIqSource::from_rtlsdr(0, AIS_SAMPLE_RATE_288K, None, false).await?;
 
     while let Some(msg_res) = receiver.next().await {
         match msg_res {

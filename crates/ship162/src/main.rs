@@ -227,7 +227,7 @@ async fn main() -> Result<()> {
             sources::Address::Pluto(uri) => {
                 let pluto_clone = tx.clone();
                 let source =
-                    AisAsyncIqSource::from_pluto(&uri.unwrap(), AIS_SAMPLE_RATE_288K, 20.).await?;
+                    AisAsyncIqSource::from_pluto(&uri.unwrap(), AIS_SAMPLE_RATE_288K, None).await?;
                 tokio::spawn(async move {
                     let mut source = Source::new(pluto_clone, source);
                     tokio::select! {
@@ -245,7 +245,8 @@ async fn main() -> Result<()> {
             #[cfg(feature = "rtlsdr")]
             sources::Address::Rtlsdr(_) => {
                 let rtl_clone = tx.clone();
-                let source = AisAsyncIqSource::from_rtlsdr(0, AIS_SAMPLE_RATE_288K).await?;
+                let source =
+                    AisAsyncIqSource::from_rtlsdr(0, AIS_SAMPLE_RATE_288K, None, false).await?;
                 tokio::spawn(async move {
                     let mut source = Source::new(rtl_clone, source);
                     tokio::select! {
@@ -266,8 +267,9 @@ async fn main() -> Result<()> {
                 let source = AisAsyncIqSource::from_soapy(
                     args.unwrap().as_str(),
                     AIS_SAMPLE_RATE_288K,
-                    Some(40.0),
+                    None,
                     "TUNER",
+                    false,
                 )
                 .await?;
                 tokio::spawn(async move {
