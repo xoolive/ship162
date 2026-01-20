@@ -19,6 +19,7 @@ pluto = ['desperado/pluto', 'rs162/pluto']
 rtlsdr = ['desperado/rtlsdr', 'rs162/rtlsdr']
 soapy = ['desperado/soapy', 'rs162/soapy']
 mqtt = ["rs162/mqtt"]
+ssh = ["rs162/ssh"]
 
 [dependencies]
 rs162 = { version = "0.1.1", path = "../rs162" }

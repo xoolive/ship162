@@ -214,7 +214,15 @@ async fn main() -> Result<()> {
                     sources::AddressPath::Long(addr) => {
                         let host = addr.host;
                         let port = addr.port;
+                        #[cfg(feature = "ssh")]
+                        let source = if let Some(jump) = addr.jump {
+                            TcpSource::with_jump(tcp_clone, host, port, jump)
+                        } else {
+                            TcpSource::new(tcp_clone, host, port)
+                        };
+                        #[cfg(not(feature = "ssh"))]
                         let source = TcpSource::new(tcp_clone, host, port);
+
                         tokio::select! {
                             result = source.run() => {
                                 if let Err(e) = result {

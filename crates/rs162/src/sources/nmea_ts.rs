@@ -196,6 +196,27 @@ impl AsyncTimestampedNmeaTcpSource {
         self.iterator.next().await
     }
 }
+
+/// Generic async timestamped NMEA source that works with any AsyncBufRead
+#[cfg(feature = "ssh")]
+pub struct AsyncTimestampedNmeaSource<R: tokio::io::AsyncBufRead + Unpin> {
+    iterator: AsyncTimestampedNmeaIterator<R>,
+}
+
+#[cfg(feature = "ssh")]
+impl<R: tokio::io::AsyncBufRead + Unpin> AsyncTimestampedNmeaSource<R> {
+    /// Create from any AsyncBufRead source (e.g., SSH tunnel)
+    pub fn from_reader(reader: R) -> Self {
+        Self {
+            iterator: AsyncTimestampedNmeaIterator::new(reader),
+        }
+    }
+
+    /// Get the next timestamped message
+    pub async fn next(&mut self) -> Option<Result<TimestampedMessage, NmeaError>> {
+        self.iterator.next().await
+    }
+}
 /// Parse a timestamped line in the format: \s:serial,c:timestamp*checksum\!NMEA_MESSAGE
 fn parse_timestamped_line(line: &str) -> Result<(u64, u64, String), Box<dyn std::error::Error>> {
     // Split by the backslash that precedes the NMEA message

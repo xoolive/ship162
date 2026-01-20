@@ -26,7 +26,7 @@ pub const AIS_PLUTO_GAIN: f64 = 73.0; // Maximum gain for PlutoSDR
 pub struct AddressStruct {
     pub host: String,
     pub port: u16,
-    jump: Option<String>,
+    pub jump: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

@@ -119,6 +119,10 @@ gain = 73.0  # Maximum gain for PlutoSDR
 [[sources]]
 tcp = "153.44.253.27:5631"
 
+# TCP source with SSH tunnel (requires --features ssh)
+# [[sources]]
+# tcp = { host = "remote-ais-server.example.com", port = 5631, jump = "jumphost" }
+
 # MQTT source (requires --features mqtt)
 [[sources]]
 mqtt = "mqtt://mqtt.digitraffic.fi"
@@ -171,9 +175,42 @@ Common options:
 
 TCP sources connect to a remote AIS feed:
 
-- `tcp = "host:port"`
+- `tcp = "host:port"` - Simple TCP connection
+- `tcp = { host = "hostname", port = 5631 }` - Structured format
+- `tcp = { host = "hostname", port = 5631, jump = "jumphost" }` - SSH tunneled connection (requires `--features ssh`)
 
-No additional configuration options.
+##### SSH Tunneling
+
+SSH tunneling allows secure connections to remote AIS sources through jump hosts. This feature requires building with the `ssh` feature:
+
+```sh
+cargo build --release --features rtlsdr,ssh
+```
+
+**Configuration:**
+
+```toml
+# TCP source with SSH tunnel
+[[sources]]
+tcp = { host = "remote-ais-server.example.com", port = 5631, jump = "jumphost.example.com" }
+```
+
+**SSH Setup:**
+
+SSH tunneling uses standard SSH configuration:
+
+1. **~/.ssh/config** - SSH client configuration:
+   ```
+   Host jumphost.example.com
+     User myuser
+     IdentityFile ~/.ssh/id_ed25519
+   ```
+
+2. **~/.ssh/known_hosts** - Host verification keys (populated automatically on first connection)
+
+3. **~/.ssh/id_*** - SSH keys for authentication (generate with `ssh-keygen`)
+
+The `jump` parameter refers to a hostname in your `~/.ssh/config` or a direct hostname that can be resolved.
 
 #### MQTT Sources
 

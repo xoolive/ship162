@@ -73,9 +73,18 @@ bias_tee = false   # Enable to power external LNA (default: false)
 [[sources]]
 tcp = "153.44.253.27:5631"
 
+# Example 9: TCP source with SSH tunnel (requires ssh feature)
+# [[sources]]
+# tcp = { host = "remote-ais-server.example.com", port = 5631, jump = "jumphost.example.com" }
+
+# or more simply
+# tcp.host = "153.44.253.27"
+# tcp.port = 5631
+# tcp.jump = "jumphost"
+
 # --- MQTT Source ---
 
-# Example 9: MQTT source (Finnish Digitraffic broker)
+# Example 10: MQTT source (Finnish Digitraffic broker)
 [[sources]]
 mqtt = "mqtt://mqtt.digitraffic.fi"
 
@@ -106,3 +115,25 @@ mqtt = "mqtt://mqtt.digitraffic.fi"
 #
 # bias_tee = true   # Enable 5V bias-tee power
 # bias_tee = false  # Disable (default)
+
+# ========== SSH TUNNELING ==========
+#
+# SSH tunneling allows secure connections to remote AIS sources through jump hosts.
+# Requires the 'ssh' feature to be enabled: cargo build --features ssh
+#
+# Configuration uses standard SSH setup:
+# - ~/.ssh/config   - SSH client configuration
+# - ~/.ssh/known_hosts - Host verification keys
+# - ~/.ssh/id_* - SSH keys for authentication
+#
+# Example SSH config (~/.ssh/config):
+#
+#   Host jumphost.example.com
+#     User myuser
+#     IdentityFile ~/.ssh/id_ed25519
+#
+# TCP source with SSH tunnel:
+#   tcp = { host = "remote-server", port = 5631, jump = "jumphost.example.com" }
+#
+# The 'jump' parameter refers to a hostname in your ~/.ssh/config or a direct hostname.
+
