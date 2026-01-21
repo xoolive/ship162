@@ -22,7 +22,7 @@ publish-jobs = ["homebrew"]
 # Whether to install an updater program
 install-updater = true
 # Features to pass to cargo build
-features = ["mqtt", "rtlsdr"]
+features = ["mqtt", "rtlsdr", "ssh"]
 
 [dist.dependencies.apt]
 libusb-dev = "*"
