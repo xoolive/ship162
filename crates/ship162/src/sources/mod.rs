@@ -68,17 +68,29 @@ pub struct RtlSdrDeviceConfig {
     pub sample_rate: Option<u32>,
 }
 
-/// Helper struct for deserializing PlutoSDR configuration from TOML
+/// Structured PlutoSDR device configuration for TOML
 #[cfg(feature = "pluto")]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct PlutoPath {
+pub struct PlutoConfig {
     /// PlutoSDR URI (IP address, USB device, or full URI like "ip:192.168.2.1" or "usb:1")
     pub pluto: String,
     /// Optional sample rate in Hz
     /// If not specified, defaults to 288 kHz
     #[serde(skip_serializing_if = "Option::is_none")]
     pub sample_rate: Option<u32>,
+}
+
+/// Helper enum for deserializing PlutoSDR configuration from TOML
+/// Supports both simple string format and structured format
+#[cfg(feature = "pluto")]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum PlutoPath {
+    /// Simple string format: pluto = "192.168.2.1"
+    Short(String),
+    /// Structured format: pluto = { pluto = "192.168.2.1", sample_rate = 3000000 }
+    Long(PlutoConfig),
 }
 
 /// Helper struct for deserializing SoapySDR configuration from TOML
@@ -193,10 +205,7 @@ impl FromStr for Source {
             #[cfg(feature = "pluto")]
             "pluto" => {
                 let uri = url.host_str().unwrap_or("192.168.2.1").to_string();
-                Address::Pluto(PlutoPath {
-                    pluto: uri,
-                    sample_rate: None,
-                })
+                Address::Pluto(PlutoPath::Short(uri))
             }
             #[cfg(not(feature = "pluto"))]
             "pluto" => {
@@ -471,7 +480,33 @@ mod tests {
             "#;
             let source: Source = toml::from_str(toml).expect("Failed to parse PlutoSDR");
             if let Address::Pluto(path) = &source.address {
-                assert_eq!(path.pluto, "192.168.2.1");
+                match path {
+                    PlutoPath::Short(uri) => assert_eq!(uri, "192.168.2.1"),
+                    PlutoPath::Long(_config) => panic!("Expected Short variant, got Long"),
+                }
+            }
+            assert_eq!(source.gain, Some(73.0));
+        }
+    }
+
+    #[test]
+    fn test_toml_pluto_long_format() {
+        #[cfg(feature = "pluto")]
+        {
+            let toml = r#"
+                pluto = { pluto = "ip:192.168.2.1", sample_rate = 3000000 }
+                gain = 73.0
+            "#;
+            let source: Source =
+                toml::from_str(toml).expect("Failed to parse PlutoSDR long format");
+            if let Address::Pluto(path) = &source.address {
+                match path {
+                    PlutoPath::Short(_uri) => panic!("Expected Long variant, got Short"),
+                    PlutoPath::Long(config) => {
+                        assert_eq!(config.pluto, "ip:192.168.2.1");
+                        assert_eq!(config.sample_rate, Some(3000000));
+                    }
+                }
             }
             assert_eq!(source.gain, Some(73.0));
         }

@@ -256,11 +256,16 @@ async fn main() -> Result<()> {
             #[cfg(feature = "pluto")]
             sources::Address::Pluto(pluto_path) => {
                 let pluto_clone = tx.clone();
-                let uri = pluto_path.pluto.clone();
+
+                // Extract URI and sample rate from either variant
+                let (uri, sample_rate_opt) = match pluto_path {
+                    sources::PlutoPath::Short(uri) => (uri.clone(), None),
+                    sources::PlutoPath::Long(config) => (config.pluto.clone(), config.sample_rate),
+                };
 
                 // Get configuration from source or use defaults
                 let gain = source.gain.unwrap_or(sources::AIS_PLUTO_GAIN);
-                let sample_rate = pluto_path.sample_rate.unwrap_or(AIS_SAMPLE_RATE_288K);
+                let sample_rate = sample_rate_opt.unwrap_or(AIS_SAMPLE_RATE_288K);
 
                 let ais_source =
                     AisAsyncIqSource::from_pluto(&uri, sample_rate, Some(gain)).await?;
