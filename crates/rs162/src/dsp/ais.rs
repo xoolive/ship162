@@ -197,7 +197,7 @@ impl AisDemodulator {
     /// Initializes all DSP blocks and persistent state required for AIS demodulation.
     ///
     /// **Note:** This demodulator only accepts 96 kHz input. Use
-    /// [`sample_rate_adapter::SampleRateAdapter`] to convert from other sample rates.
+    /// [`sample_rate::SampleRateAdapter`] to convert from other sample rates.
     ///
     /// # Example
     ///
@@ -240,7 +240,7 @@ impl AisDemodulator {
     /// frequency correction, symbol timing recovery, and message decoding.
     ///
     /// **Important:** Input samples must be at 96 kHz. Use
-    /// [`sample_rate_adapter::SampleRateAdapter`] to convert from other rates.
+    /// [`sample_rate::SampleRateAdapter`] to convert from other rates.
     ///
     /// Returns a set of valid AIS messages detected in the input.
     pub fn demodulate(&mut self, iq_samples: &[Complex<f32>]) -> HashSet<AisDemodulatedMessage> {
