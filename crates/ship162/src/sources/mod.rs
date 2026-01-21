@@ -62,24 +62,36 @@ pub struct RtlSdrDeviceConfig {
     /// Product filter
     #[serde(skip_serializing_if = "Option::is_none")]
     pub product: Option<String>,
+    /// Optional sample rate in Hz (e.g., 1536000 for 1.536 MS/s)
+    /// If not specified, defaults to 288 kHz
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub sample_rate: Option<u32>,
 }
 
 /// Helper struct for deserializing PlutoSDR configuration from TOML
 #[cfg(feature = "pluto")]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(transparent)]
+#[serde(deny_unknown_fields)]
 pub struct PlutoPath {
     /// PlutoSDR URI (IP address, USB device, or full URI like "ip:192.168.2.1" or "usb:1")
     pub pluto: String,
+    /// Optional sample rate in Hz
+    /// If not specified, defaults to 288 kHz
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub sample_rate: Option<u32>,
 }
 
 /// Helper struct for deserializing SoapySDR configuration from TOML
 #[cfg(feature = "soapy")]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(transparent)]
+#[serde(deny_unknown_fields)]
 pub struct SoapyPath {
-    /// SoapySDR driver arguments (e.g., "driver=rtlsdr")
-    pub soapy: String,
+    /// SoapySDR driver arguments (e.g., "driver=rtlsdr" or "driver=airspy")
+    pub args: String,
+    /// Optional sample rate in Hz (e.g., 3000000 for Airspy Mini at 3 MS/s)
+    /// If not specified, defaults to 288 kHz
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub sample_rate: Option<u32>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -181,7 +193,10 @@ impl FromStr for Source {
             #[cfg(feature = "pluto")]
             "pluto" => {
                 let uri = url.host_str().unwrap_or("192.168.2.1").to_string();
-                Address::Pluto(PlutoPath { pluto: uri })
+                Address::Pluto(PlutoPath {
+                    pluto: uri,
+                    sample_rate: None,
+                })
             }
             #[cfg(not(feature = "pluto"))]
             "pluto" => {
@@ -197,6 +212,7 @@ impl FromStr for Source {
                     serial: None,
                     manufacturer: None,
                     product: None,
+                    sample_rate: None,
                 };
                 Address::Rtlsdr(RtlSdrPath { config })
             }
@@ -209,7 +225,10 @@ impl FromStr for Source {
             #[cfg(feature = "soapy")]
             "soapy" => {
                 let args = url.host_str().unwrap_or("driver=rtlsdr").to_string();
-                Address::Soapy(SoapyPath { soapy: args })
+                Address::Soapy(SoapyPath {
+                    args,
+                    sample_rate: None,
+                })
             }
             #[cfg(not(feature = "soapy"))]
             "soapy" => {
@@ -463,18 +482,37 @@ mod tests {
         #[cfg(feature = "soapy")]
         {
             let toml = r#"
-                soapy = "driver=rtlsdr"
+                soapy = { args = "driver=rtlsdr" }
                 gain = 49.6
                 bias_tee = false
                 gain_element = "TUNER"
             "#;
             let source: Source = toml::from_str(toml).expect("Failed to parse SoapySDR");
             if let Address::Soapy(path) = &source.address {
-                assert_eq!(path.soapy, "driver=rtlsdr");
+                assert_eq!(path.args, "driver=rtlsdr");
+                assert_eq!(path.sample_rate, None);
             }
             assert_eq!(source.gain, Some(49.6));
             assert_eq!(source.bias_tee, Some(false));
             assert_eq!(source.gain_element, Some("TUNER".to_string()));
+        }
+    }
+
+    #[test]
+    fn test_toml_soapy_airspy_3m() {
+        #[cfg(feature = "soapy")]
+        {
+            let toml = r#"
+                soapy = { args = "driver=airspy", sample_rate = 3000000 }
+                gain = 49.6
+            "#;
+            let source: Source =
+                toml::from_str(toml).expect("Failed to parse Airspy Mini at 3 MS/s");
+            if let Address::Soapy(path) = &source.address {
+                assert_eq!(path.args, "driver=airspy");
+                assert_eq!(path.sample_rate, Some(3000000));
+            }
+            assert_eq!(source.gain, Some(49.6));
         }
     }
 

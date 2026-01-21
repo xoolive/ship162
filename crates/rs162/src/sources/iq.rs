@@ -4,7 +4,7 @@
 
 use desperado::{IqAsyncSource, IqFormat, IqSource, Result};
 use futures::stream::StreamExt;
-use futures::Stream;
+use futures::Stream as FuturesStream;
 use std::collections::VecDeque;
 use std::path::Path;
 use std::pin::Pin;
@@ -22,6 +22,7 @@ use desperado::rtlsdr::{DeviceSelector, RtlSdrConfig};
 use desperado::soapy::SoapyConfig;
 
 use crate::dsp::ais::{AisDemodulatedMessage, AisDemodulator};
+use crate::dsp::sample_rate::SampleRateAdapter;
 
 const DEFAULT_CHUNK_SAMPLES: usize = 8192;
 const AIS_FREQ: u32 = 162_000_000;
@@ -37,6 +38,7 @@ const PLUTO_GAIN: f64 = 73.0; // Maximum gain for PlutoSDR
 pub struct AisIqSource {
     source: IqSource,
     demodulator: AisDemodulator,
+    adapter: SampleRateAdapter,
     message_buffer: VecDeque<AisDemodulatedMessage>,
 }
 
@@ -44,7 +46,8 @@ impl AisIqSource {
     pub fn new(source: IqSource, sample_rate: u32) -> Self {
         Self {
             source,
-            demodulator: AisDemodulator::new(sample_rate),
+            demodulator: AisDemodulator::new(),
+            adapter: SampleRateAdapter::new(sample_rate),
             message_buffer: VecDeque::new(),
         }
     }
@@ -52,11 +55,7 @@ impl AisIqSource {
     pub fn from_file<P: AsRef<Path>>(path: P, sample_rate: u32, format: IqFormat) -> Result<Self> {
         let source =
             IqSource::from_file(path, AIS_FREQ, sample_rate, DEFAULT_CHUNK_SAMPLES, format)?;
-        Ok(Self {
-            source,
-            demodulator: AisDemodulator::new(sample_rate),
-            message_buffer: VecDeque::new(),
-        })
+        Ok(Self::new(source, sample_rate))
     }
 
     pub fn from_tcp(addr: &str, port: u16, sample_rate: u32, format: IqFormat) -> Result<Self> {
@@ -68,22 +67,14 @@ impl AisIqSource {
             DEFAULT_CHUNK_SAMPLES,
             format,
         )?;
-        Ok(Self {
-            source,
-            demodulator: AisDemodulator::new(sample_rate),
-            message_buffer: VecDeque::new(),
-        })
+        Ok(Self::new(source, sample_rate))
     }
 
     /// Create an AIS IQ source from a DeviceConfig for SDR devices
     #[cfg(any(feature = "rtlsdr", feature = "soapy", feature = "pluto"))]
     pub fn from_device_config(config: DeviceConfig, sample_rate: u32) -> Result<Self> {
         let source = IqSource::from_device_config(config)?;
-        Ok(Self {
-            source,
-            demodulator: AisDemodulator::new(sample_rate),
-            message_buffer: VecDeque::new(),
-        })
+        Ok(Self::new(source, sample_rate))
     }
 
     #[cfg(feature = "pluto")]
@@ -145,7 +136,10 @@ impl AisIqSource {
         loop {
             match self.source.next() {
                 Some(Ok(samples)) => {
-                    let messages = self.demodulator.demodulate(&samples);
+                    // Convert to 96 kHz using adapter
+                    let samples_96k = self.adapter.process(&samples);
+
+                    let messages = self.demodulator.demodulate(&samples_96k);
                     self.message_buffer.extend(messages);
                     if let Some(msg) = self.message_buffer.pop_front() {
                         return Some(Ok(msg));
@@ -304,7 +298,7 @@ impl AisAsyncIqSource {
     }
 }
 
-impl Stream for AisAsyncIqSource {
+impl FuturesStream for AisAsyncIqSource {
     type Item = Result<AisDemodulatedMessage>;
 
     fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
@@ -318,11 +312,16 @@ pub fn spawn_demodulator_task(
     sample_rate: u32,
 ) -> tokio::task::JoinHandle<()> {
     tokio::spawn(async move {
-        let mut demodulator = AisDemodulator::new(sample_rate);
+        // Create sample rate adapter and demodulator
+        let mut adapter = SampleRateAdapter::new(sample_rate);
+        let mut demodulator = AisDemodulator::new();
+
         loop {
             match source.next().await {
                 Some(Ok(samples)) => {
-                    let messages = demodulator.demodulate(&samples);
+                    // Convert to 96 kHz using adapter
+                    let samples_96k = adapter.process(&samples);
+                    let messages = demodulator.demodulate(&samples_96k);
                     for msg in messages {
                         if tx.send(Ok(msg)).await.is_err() {
                             return;

@@ -17,7 +17,9 @@ pub mod cic5;
 pub mod ema;
 pub mod fir;
 pub mod rotate;
+pub mod sample_rate;
 pub mod scatter;
+pub mod upsampler;
 
 /// Tag structure passed along with samples through the DSP chain
 #[derive(Debug, Clone, Default)]

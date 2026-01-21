@@ -258,11 +258,12 @@ async fn main() -> Result<()> {
                 let pluto_clone = tx.clone();
                 let uri = pluto_path.pluto.clone();
 
-                // Get gain from source config or use default
+                // Get configuration from source or use defaults
                 let gain = source.gain.unwrap_or(sources::AIS_PLUTO_GAIN);
+                let sample_rate = pluto_path.sample_rate.unwrap_or(AIS_SAMPLE_RATE_288K);
 
                 let ais_source =
-                    AisAsyncIqSource::from_pluto(&uri, AIS_SAMPLE_RATE_288K, Some(gain)).await?;
+                    AisAsyncIqSource::from_pluto(&uri, sample_rate, Some(gain)).await?;
                 tokio::spawn(async move {
                     let mut source = Source::new(pluto_clone, ais_source);
                     tokio::select! {
@@ -306,13 +307,11 @@ async fn main() -> Result<()> {
                     DeviceSelector::Index(0)
                 };
 
-                let ais_source = AisAsyncIqSource::from_rtlsdr(
-                    device,
-                    AIS_SAMPLE_RATE_288K,
-                    Some(gain),
-                    bias_tee,
-                )
-                .await?;
+                // Get sample rate from config or use default 288 kHz
+                let sample_rate = config.sample_rate.unwrap_or(AIS_SAMPLE_RATE_288K);
+                let ais_source =
+                    AisAsyncIqSource::from_rtlsdr(device, sample_rate, Some(gain), bias_tee)
+                        .await?;
                 tokio::spawn(async move {
                     let mut source = Source::new(rtl_clone, ais_source);
                     tokio::select! {
@@ -330,16 +329,18 @@ async fn main() -> Result<()> {
             #[cfg(feature = "soapy")]
             sources::Address::Soapy(soapy_path) => {
                 let soapy_clone = tx.clone();
-                let args = soapy_path.soapy.clone();
+                let args = soapy_path.args.clone();
 
                 // Get configuration from source or use defaults
                 let gain = source.gain.unwrap_or(sources::AIS_RTLSDR_GAIN);
                 let bias_tee = source.bias_tee.unwrap_or(false);
                 let gain_element = source.gain_element.as_deref().unwrap_or("TUNER");
+                // Use specified sample rate or default to 288 kHz
+                let sample_rate = soapy_path.sample_rate.unwrap_or(AIS_SAMPLE_RATE_288K);
 
                 let ais_source = AisAsyncIqSource::from_soapy(
                     &args,
-                    AIS_SAMPLE_RATE_288K,
+                    sample_rate,
                     Some(gain),
                     gain_element,
                     bias_tee,
