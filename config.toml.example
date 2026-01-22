@@ -7,7 +7,7 @@
 #   - ~/.config/ship162/config.toml
 
 # Output file for received AIS messages in JSON format
-# output = "/tmp/ais_messages.json"
+# output = "/tmp/ais_messages.jsonl"
 
 # Logging configuration
 # log_file = "/tmp/ship162.log"  # Use "-" for stdout (only in non-interactive mode)
