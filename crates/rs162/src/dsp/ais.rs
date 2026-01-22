@@ -132,10 +132,11 @@ impl Default for DecoderState {
 ///
 /// This struct contains all DSP blocks and persistent state needed to demodulate AIS signals.
 /// Each field represents a stage in the DSP pipeline or persistent state for message decoding.
+///
+/// **Important:** This demodulator only operates at 96 kHz. If your input samples are at a
+/// different rate (288 kHz or 3 MS/s), use [`sample_rate::SampleRateAdapter`] to
+/// convert them to 96 kHz first.
 pub struct AisDemodulator {
-    /// Downsampling FIR filter (DSK).
-    /// Used to reduce sample rate from 288kHz to 96kHz using a Blackman-Harris window.
-    dsk: fir::DownsampleKFilter,
     /// Frequency rotation and channel splitting.
     /// Rotates the input IQ samples to separate channels A and B (±25kHz offset).
     rotate: rotate::Rotate,
@@ -182,20 +183,32 @@ pub struct AisDemodulator {
     /// Persistent decoder states for channel B (one per timing phase).
     /// Maintains state for decoding messages that span multiple symbol vectors in channel B.
     decoder_states_b: Vec<DecoderState>,
+}
 
-    /// Input sample rate (Hz).
-    /// Should be either 96000 or 288000 for this demodulator.
-    sample_rate: u32,
+impl Default for AisDemodulator {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl AisDemodulator {
-    /// Create a new AIS demodulator instance for the specified sample rate.
+    /// Create a new AIS demodulator instance for 96 kHz sample rate.
     ///
     /// Initializes all DSP blocks and persistent state required for AIS demodulation.
-    /// The sample rate must be either 96000 or 288000 Hz.
-    pub fn new(sample_rate: u32) -> Self {
+    ///
+    /// **Note:** This demodulator only accepts 96 kHz input. Use
+    /// [`sample_rate::SampleRateAdapter`] to convert from other sample rates.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use rs162::dsp::ais::AisDemodulator;
+    ///
+    /// let mut demod = AisDemodulator::new();
+    /// // Feed 96 kHz samples to demod.demodulate()
+    /// ```
+    pub fn new() -> Self {
         Self {
-            dsk: fir::DownsampleKFilter::with_params(3, fir::BLACKMAN_HARRIS_28_3),
             rotate: rotate::Rotate::new(std::f32::consts::PI * 25000.0 / 48000.0),
             ds2a: cic5::Downsample2CIC5::new(),
             ds2b: cic5::Downsample2CIC5::new(),
@@ -217,37 +230,28 @@ impl AisDemodulator {
             // Initialize decoder states for 5 phases per channel
             decoder_states_a: vec![DecoderState::default(); 5],
             decoder_states_b: vec![DecoderState::default(); 5],
-            sample_rate,
         }
     }
 
     /// Demodulate a slice of IQ samples and extract AIS messages.
     ///
     /// This is the main entry point for AIS demodulation. It processes the input samples
-    /// through the DSP pipeline, including downsampling, frequency rotation, filtering,
+    /// through the DSP pipeline, including frequency rotation, filtering,
     /// frequency correction, symbol timing recovery, and message decoding.
+    ///
+    /// **Important:** Input samples must be at 96 kHz. Use
+    /// [`sample_rate::SampleRateAdapter`] to convert from other rates.
     ///
     /// Returns a set of valid AIS messages detected in the input.
     pub fn demodulate(&mut self, iq_samples: &[Complex<f32>]) -> HashSet<AisDemodulatedMessage> {
-        if (self.sample_rate != AIS_SAMPLE_RATE_96K) & (self.sample_rate != AIS_SAMPLE_RATE_288K) {
-            panic!("This simplified demodulator only supports 96ks/s or 288ks/s sample rate.");
-        }
-
         if iq_samples.is_empty() {
             return HashSet::new();
         }
 
         let mut tag = Tag::default();
 
-        let iq_samples = if self.sample_rate == AIS_SAMPLE_RATE_288K {
-            // Downsample from 288kHz to 96kHz using DSK
-            self.dsk.receive(iq_samples, &mut tag)
-        } else {
-            iq_samples.to_vec()
-        };
-
         // Step 1: Rotate ±25kHz and split into channels A and B (at 96kHz)
-        let (channel_a, channel_b) = self.rotate.receive_dual(&iq_samples, &mut tag);
+        let (channel_a, channel_b) = self.rotate.receive_dual(iq_samples, &mut tag);
 
         // Step 2: Downsample to 48kHz (CIC5 by 2)
         let ds2a = self.ds2a.receive(&channel_a, &mut tag);
