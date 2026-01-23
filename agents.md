@@ -1,37 +1,27 @@
 # Agent development guide
 
-This guide provides comprehensive instructions for AI agents working on the jet1090/rs1090 project.
+This guide provides comprehensive instructions for AI agents working on the ship162/rs162 project.
 
 ## Project overview
 
-- Real-time enriched trajectory data serving
-- Cross-platform export formats (JSON, gRPC, Arrow)
-- Inspired by [pyModeS](https://github.com/junzis/pyModeS) library design
+- Real-time maritime AIS decoding and tracking
+- End-to-end demodulation from sdr to structured data
+- Tui for live monitoring
 - Uses [deku](https://github.com/sharksforarms/deku) for declarative binary data decoding
 
 ## Project structure
 
 ```
-jet1090/
+ship162/
 ├── crates/
-│   ├── rs1090/          # Core decoding library (Mode S, ADS-B, FLARM)
-│   ├── jet1090/         # Live decoding application with TUI and web server
-│   ├── decode1090/      # Companion CLI decoding tool
-│   └── rs1090-wasm/     # WebAssembly bindings for browser usage
-├── python/              # Python bindings (PyO3/maturin)
-├── docs/                # MkDocs documentation (deployed to mode-s.org/jet1090)
-├── samples/             # Real flight trajectory data for testing (private)
-├── references/          # ADS-B/Mode S specification PDFs (ICAO standards, private)
-└── container/           # Docker/Podman container definitions
+│   ├── rs162/           # core library (ais decoding, nmea parsing, dsp demodulation)
+│   └── ship162/         # live decoding application with tui and source management
 ```
 
 ### Crate responsibilities
 
-- **rs1090**: Core library with decoding logic, CPR algorithms, data sources (RTL-SDR, SeRo, SSH, Beast)
-- **jet1090**: Full-featured application with TUI, web server, snapshot management, deduplication
-- **decode1090**: Lightweight CLI tool for batch message decoding
-- **rs1090-wasm**: Browser-compatible WebAssembly bindings
-- **python/**: Python bindings exposing `decode()` and `flarm()` functions
+- **rs162**: core library with ais message decoding (types 1-27), nmea parsing, and dsp pipeline (demodulation, filters, sample rate adaptation)
+- **ship162**: full-featured application with tui, source handling (tcp, mqtt, sdr), and state management
 
 ## Setup and build
 
@@ -44,29 +34,11 @@ cargo build --release --all-features
 ### Building specific components
 
 ```sh
-# Core library only
-cargo build -p rs1090 --release
+# core library only
+cargo build -p rs162 --release
 
-# jet1090 application
-cargo build -p jet1090 --release
-
-# Python bindings (requires uv)
-cd python
-uv sync --all-extras --dev
-maturin develop
-
-# WebAssembly bindings
-cd crates/rs1090-wasm
-wasm-pack build --target web
-```
-
-### Nix platform
-
-```sh
-nix develop              # Enter development environment
-nix build                # Build jet1090 (default package)
-nix run                  # Run jet1090 directly
-nix profile install      # Install to PATH
+# ship162 application
+cargo build -p ship162 --release
 ```
 
 ## Testing
@@ -78,13 +50,10 @@ nix profile install      # Install to PATH
 cargo test --workspace --all-features --all-targets
 
 # Run tests for specific crate
-cargo test -p rs1090 --all-features
+cargo test -p rs162 --all-features
 
 # Run specific test
 cargo test test_name -- --nocapture
-
-# Run with Nix
-nix run .#checks.test-check  # Uses cargo-nextest
 ```
 
 ### Benchmarks
@@ -92,30 +61,6 @@ nix run .#checks.test-check  # Uses cargo-nextest
 ```sh
 # Run Rust benchmarks
 cargo bench
-
-# Run specific benchmark
-cargo bench --bench long_flight
-
-# Python benchmarks
-cd python/examples
-python benchmark.py
-```
-
-### Python tests
-
-```sh
-cd python
-uv run pytest                # Run all tests
-uv run pytest tests/test_adsb.py  # Specific test file
-uv run pytest -v             # Verbose output
-```
-
-### WebAssembly tests
-
-```sh
-cd crates/rs1090-wasm/tests
-npm install
-npm test
 ```
 
 ## Code quality and style
@@ -145,19 +90,6 @@ cargo doc --all-features --no-deps --open # Build and open in browser
 RUSTDOCFLAGS="-D rustdoc::all -A rustdoc::private-doc-tests" cargo doc --all-features --no-deps
 ```
 
-### Python
-
-```sh
-cd python
-uv run ruff check            # Linting
-uv run ruff format           # Formatting
-uv run ruff format --check   # Check formatting without modifying
-
-# Type checking (run both)
-uvx ty check
-uv run mypy
-```
-
 ### Markdown
 
 - Use `prettier` for formatting documentation and markdown files
@@ -165,48 +97,12 @@ uv run mypy
 
 ### Code conventions
 
-**Rust:**
-
-- Use descriptive variable names (e.g., `icao24`, `latitude_cpr`, `groundspeed`)
+- Use descriptive variable names (e.g., `mmsi`, `speed_over_ground`, `latitude`)
 - Prefer declarative deku attributes for binary decoding
 - Document public APIs with `///` doc comments
 - Use `tracing` for logging, not `println!`
 - Handle errors with `Result<T, E>`, avoid unwrap in library code
 - Use `#[must_use]` for important return values
-
-**Python:**
-
-- Follow PEP 8 style guide (enforced by ruff)
-- Use type hints for all public functions
-- Docstrings for all public functions and classes
-
-## Documentation
-
-### Building documentation
-
-**MkDocs site (jet1090 user docs):**
-
-```sh
-uvx --with "mkdocs-material[imaging]" mkdocs serve  # Local preview
-uvx --with "mkdocs-material[imaging]" mkdocs build -d site  # Build static site
-```
-
-Site deploys automatically to https://mode-s.org/jet1090 on push to master.
-
-**Rust API docs:**
-
-```sh
-cargo doc --all-features --no-deps --open
-```
-
-Published automatically to https://docs.rs/rs1090
-
-### Documentation structure
-
-- `docs/`: MkDocs markdown files (installation, configuration, usage guides)
-- `crates/rs1090/src/`: Inline Rust documentation (extracted by rustdoc)
-- `readme.md`: Main repository README with quickstart examples
-- `changelog.md`: Version history and release notes
 
 ## Release
 
@@ -215,31 +111,10 @@ Published automatically to https://docs.rs/rs1090
 
 ## Decoding specifications and test data
 
-### Reference materials
-
-The `references/` directory contains official ICAO specifications:
-
-- `DO-260B.pdf`: ADS-B specification
-- `icao_doc_9871_*.pdf`: Mode S technical provisions
-- `icao_annex_10_*.pdf`: Aeronautical telecommunications standards
-
-**Extracting information:**
-
-```sh
-pdftotext references/DO-260B.pdf - | less  # Convert to text for searching
-```
-
 ### Test samples
 
-The `samples/` directory contains real-world trajectory data in JSONL format:
-
-- Format: `YYYYMMDD_GUFI_ORIGIN_DEST.jsonl[.7z]`
-- Contains timestamped Mode S messages from actual flights
-- Useful for regression testing, debugging, and performance benchmarking
-
-Do not commit files there, they must remain private.
-You may only extract individual or cherry-picked sequences of messages for testing and/or statistical purposes.
-Do not edit or uncompress files in place but you may do that in /tmp folder if needed
+- `crates/rs162/data/ais_nmea.txt`: sample nmea sentences for testing parsers
+- `crates/rs162/data/ais_96k.bin`: sample iq data for testing demodulators
 
 ## Git workflow and commits
 
@@ -258,7 +133,7 @@ Do not edit or uncompress files in place but you may do that in /tmp folder if n
 - Always ask for confirmation before creating commits
 - If fixing a GitHub issue, create a dedicated branch and PR
 
-**Commit message format:**
+**Conventional Commit message format:**
 
 ```
 type: brief description (imperative mood)
