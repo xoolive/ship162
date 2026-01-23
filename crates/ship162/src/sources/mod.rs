@@ -274,7 +274,7 @@ impl FromStr for Source {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TimedMessage {
-    pub timestamp: u64,
+    pub timestamp: f64,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub signal_level: Option<f32>,
     #[serde(flatten)]

@@ -14,7 +14,7 @@ use tokio::net::TcpStream as AsyncTcpStream;
 /// Represents a timestamped decoded AIS message
 #[derive(Debug, Clone)]
 pub struct TimestampedMessage {
-    pub timestamp: u64,
+    pub timestamp: f64,
     pub binary_data: Vec<u8>,
     pub serial: u64,
 }
@@ -218,7 +218,7 @@ impl<R: tokio::io::AsyncBufRead + Unpin> AsyncTimestampedNmeaSource<R> {
     }
 }
 /// Parse a timestamped line in the format: \s:serial,c:timestamp*checksum\!NMEA_MESSAGE
-fn parse_timestamped_line(line: &str) -> Result<(u64, u64, String), Box<dyn std::error::Error>> {
+fn parse_timestamped_line(line: &str) -> Result<(u64, f64, String), Box<dyn std::error::Error>> {
     // Split by the backslash that precedes the NMEA message
     let parts: Vec<&str> = line.splitn(2, "\\!").collect();
     if parts.len() != 2 {
@@ -259,7 +259,7 @@ fn parse_timestamped_line(line: &str) -> Result<(u64, u64, String), Box<dyn std:
     }
 
     let timestamp = fields[1][2..]
-        .parse::<u64>()
+        .parse::<f64>()
         .map_err(|_| "Invalid timestamp")?;
 
     Ok((serial, timestamp, nmea_part))

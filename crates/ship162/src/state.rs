@@ -23,7 +23,7 @@ pub struct VesselState {
     pub course: Option<f32>,
     pub heading: Option<u16>,
     pub status: Option<NavigationStatus>,
-    pub last_update: u64,
+    pub last_update: f64,
     pub count: usize,
 }
 
@@ -47,7 +47,7 @@ impl VesselState {
             course: None,
             heading: None,
             status: None,
-            last_update: 0,
+            last_update: 0.0,
             count: 0,
         }
     }

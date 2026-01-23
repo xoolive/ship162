@@ -63,7 +63,7 @@ pub struct AisDemodulatedMessage {
     pub channel: char,
     /// The timestamp (seconds since UNIX epoch) when the message was decoded.
     /// Used for time correlation and logging.
-    pub timestamp: u64,
+    pub timestamp: f64,
     /// The NMEA sentences generated from this AIS message.
     pub nmea_sentences: Vec<String>,
 }
@@ -404,7 +404,7 @@ impl AisDemodulator {
                                     let rxtime = SystemTime::now()
                                         .duration_since(UNIX_EPOCH)
                                         .unwrap()
-                                        .as_secs();
+                                        .as_secs_f64();
                                     let msg = AisDemodulatedMessage {
                                         bits: data.to_vec(),
                                         signal_level,
@@ -653,7 +653,7 @@ mod tests {
             bits: bits.clone(),
             signal_level: 42.0,
             channel: 'B',
-            timestamp: 1_700_000_000,
+            timestamp: 1_700_000_000.0,
             nmea_sentences: vec![],
         };
 

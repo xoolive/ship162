@@ -107,7 +107,7 @@ enum MqttMessageType {
 #[derive(Debug, Clone)]
 pub struct MqttMessage {
     /// Timestamp in seconds since epoch
-    pub timestamp: u64,
+    pub timestamp: f64,
     /// AIS message (ported from the received JSON payload)
     pub message: Message,
 }
@@ -160,7 +160,7 @@ impl MqttAisMessage {
             MqttMessageType::Position(pos) => {
                 // Convert to PositionReportClassA (Message Type 1, 2, or 3)
                 MqttMessage {
-                    timestamp: pos.time,
+                    timestamp: pos.time as f64,
                     message: Message::PositionReport1(PositionReport {
                         mmsi: self.mmsi,
                         longitude: Some(pos.longitude),
@@ -197,7 +197,7 @@ impl MqttAisMessage {
                 let hour = ((meta.eta >> 6) & 0x1F) as u8;
                 let minute = (meta.eta & 0x3F) as u8;
                 MqttMessage {
-                    timestamp: meta.timestamp / 1000,
+                    timestamp: meta.timestamp as f64 / 1000.0,
                     message: Message::StaticAndVoyageData(StaticAndVoyageData {
                         ais_version: 0,
                         msg_type: 5,

@@ -58,7 +58,7 @@ fn render_table(frame: &mut Frame, area: Rect, state: &AppState) {
     let now = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .expect("SystemTime before unix epoch")
-        .as_secs();
+        .as_secs_f64();
 
     let rows: Vec<Row> = visible_vessels
         .enumerate()
@@ -116,8 +116,8 @@ fn render_table(frame: &mut Frame, area: Rect, state: &AppState) {
                 vessel.dimensions_str(),
                 vessel.destination.as_deref().unwrap_or("").to_string(),
                 vessel.count.to_string(),
-                if now > vessel.last_update + 15 {
-                    format!("{}s ago", now - vessel.last_update)
+                if now > vessel.last_update + 15.0 {
+                    format!("{:.0}s ago", now - vessel.last_update)
                 } else {
                     "".to_string()
                 },
