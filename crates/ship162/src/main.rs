@@ -14,6 +14,7 @@ use serde::Deserialize;
 use state::AppState;
 use std::{path::PathBuf, sync::Arc};
 use tokio::{fs, io::AsyncWriteExt, sync::Mutex};
+use tracing::warn;
 use tracing_subscriber::{fmt, prelude::*, EnvFilter};
 
 use crate::sources::iq::Source;
@@ -63,6 +64,11 @@ struct Options {
     /// Redis topic for the messages, default to "ship162"
     #[arg(long, value_name = "REDIS TOPIC")]
     redis_topic: Option<String>,
+
+    /// Retry interval (seconds) when publishing to Redis fails (0 disables retry)
+    #[arg(long, value_name = "SECONDS")]
+    #[serde(default)]
+    redis_retry_interval: Option<u64>,
 }
 
 #[tokio::main]
@@ -114,6 +120,9 @@ async fn main() -> Result<()> {
     if cli_options.redis_topic.is_some() {
         options.redis_topic = cli_options.redis_topic;
     }
+    if cli_options.redis_retry_interval.is_some() {
+        options.redis_retry_interval = cli_options.redis_retry_interval;
+    }
     options.sources.append(&mut cli_options.sources);
 
     // example: RUST_LOG=rs162=DEBUG
@@ -149,6 +158,8 @@ async fn main() -> Result<()> {
         None => None,
     };
     let redis_topic = options.redis_topic.unwrap_or("ship162".to_string());
+    let redis_retry_interval =
+        tokio::time::Duration::from_secs(options.redis_retry_interval.unwrap_or(5));
 
     let _awake = match options.prevent_sleep {
         true => Some(
@@ -465,7 +476,8 @@ async fn main() -> Result<()> {
                             let _ = file.write_all(b"\n").await;
                         }
                         if let Some(c) = &mut redis_connect {
-                            let _: () = c.publish(redis_topic.clone(), json).await.unwrap();
+                            publish_with_retry(c, redis_topic.as_str(), &json, redis_retry_interval)
+                                .await;
                         }
                     }
                 }
@@ -489,7 +501,7 @@ async fn main() -> Result<()> {
                     let _ = file.write_all(b"\n").await;
                 }
                 if let Some(c) = &mut redis_connect {
-                    let _: () = c.publish(redis_topic.clone(), json).await.unwrap();
+                    publish_with_retry(c, redis_topic.as_str(), &json, redis_retry_interval).await;
                 }
             }
         }
@@ -513,4 +525,29 @@ fn expanduser(path: PathBuf) -> PathBuf {
         }
     }
     path
+}
+
+async fn publish_with_retry(
+    connection: &mut redis::aio::MultiplexedConnection,
+    topic: &str,
+    payload: &str,
+    retry_interval: tokio::time::Duration,
+) {
+    loop {
+        match connection.publish::<_, _, ()>(topic, payload).await {
+            Ok(()) => break,
+            Err(err) => {
+                if retry_interval.is_zero() {
+                    warn!(error = %err, "Redis publish failed; retries disabled");
+                    break;
+                }
+                warn!(
+                    error = %err,
+                    retry_seconds = retry_interval.as_secs(),
+                    "Redis publish failed; retrying"
+                );
+                tokio::time::sleep(retry_interval).await;
+            }
+        }
+    }
 }
