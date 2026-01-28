@@ -22,13 +22,15 @@
 //! # Examples
 //!
 //! ```rust
-//! use crate::dsp::cic5::{Downsample2CIC5, FilterCIC5};
 //! use num_complex::Complex;
+//! use rs162::dsp::cic5::Downsample2CIC5;
+//! use rs162::dsp::{Stream, Tag};
 //!
 //! let mut filter = Downsample2CIC5::new();
-//! let input: Vec<Complex<f32>> = vec![/* ... */];
+//! let input = vec![Complex::new(0.0, 0.0); 6];
 //! let mut tag = Tag::default();
 //! let output = filter.receive(&input, &mut tag);
+//! assert_eq!(output.len(), input.len() / 2);
 //! ```
 use super::{Stream, Tag};
 use num_complex::Complex;

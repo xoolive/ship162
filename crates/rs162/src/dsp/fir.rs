@@ -23,12 +23,14 @@
 //!
 //! ```rust
 //! use num_complex::Complex;
-//! use crate::dsp::filter::{FilterComplex, COHERENT_TAPS};
+//! use rs162::dsp::fir::{FilterComplex, COHERENT_TAPS};
+//! use rs162::dsp::{Stream, Tag};
 //!
 //! let mut filter = FilterComplex::with_taps(COHERENT_TAPS);
-//! let input: Vec<Complex<f32>> = /* ... */;
+//! let input = vec![Complex::new(0.0, 0.0); 8];
 //! let mut tag = Tag::default();
 //! let output = filter.receive(&input, &mut tag);
+//! assert_eq!(output.len(), input.len());
 //! ```
 //!
 use super::{Stream, Tag};

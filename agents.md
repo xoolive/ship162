@@ -1,101 +1,21 @@
 # Agent development guide
 
-This guide provides comprehensive instructions for AI agents working on the ship162/rs162 project.
+- Code structure:
+    - `crates/rs162`: Core library with AIS message decoding (types 1-27), NMEA parsing, and DSP pipeline (demodulation, filters, sample rate adaptation)
+    - `crates/ship162`: Full-featured application with TUI, source handling and state management
+- Feature flags such as `mqtt`, `pluto`, `rtlsdr`, `soapy` control the supported data sources for the library/application. Unless explicitly asked, always run Cargo commands with `--all-features`.
+- Code quality:
+    - Always use `--all-targets`.
+    - Run `cargo clippy` with `-- -D warnings`.
+    - Run `cargo test` with `--doc` and `--workspace` if applicable.
+    - Formatting: Run `cargo fmt --all`
+- Markdown: use `prettier` for formatting documentation and markdown files. Follow CommonMark specification.
+- Decoding specifications and test data:
+    - `crates/rs162/data/ais_nmea.txt`: nmea sentences for testing parsers
+    - `crates/rs162/data/ais_96k.bin`: iq data for testing demodulators
+- Rustdoc: run with `RUSTDOCFLAGS="-D rustdoc::all -A rustdoc::private-doc-tests" cargo doc --all-features --no-deps`
 
-## Project overview
-
-- Real-time maritime AIS decoding and tracking
-- End-to-end demodulation from sdr to structured data
-- Tui for live monitoring
-- Uses [deku](https://github.com/sharksforarms/deku) for declarative binary data decoding
-
-## Project structure
-
-```
-ship162/
-├── crates/
-│   ├── rs162/           # core library (ais decoding, nmea parsing, dsp demodulation)
-│   └── ship162/         # live decoding application with tui and source management
-```
-
-### Crate responsibilities
-
-- **rs162**: core library with ais message decoding (types 1-27), nmea parsing, and dsp pipeline (demodulation, filters, sample rate adaptation)
-- **ship162**: full-featured application with tui, source handling (tcp, mqtt, sdr), and state management
-
-## Setup and build
-
-### Initial build
-
-```sh
-cargo build --release --all-features
-```
-
-### Building specific components
-
-```sh
-# core library only
-cargo build -p rs162 --release
-
-# ship162 application
-cargo build -p ship162 --release
-```
-
-## Testing
-
-### Rust tests
-
-```sh
-# Run all tests (workspace-wide)
-cargo test --workspace --all-features --all-targets
-
-# Run tests for specific crate
-cargo test -p rs162 --all-features
-
-# Run specific test
-cargo test test_name -- --nocapture
-```
-
-### Benchmarks
-
-```sh
-# Run Rust benchmarks
-cargo bench
-```
-
-## Code quality and style
-
-### Rust
-
-**Linting:**
-
-```sh
-cargo clippy --workspace --all-targets --all-features -- -D warnings
-```
-
-**Formatting:**
-
-```sh
-cargo fmt --all              # Format all code
-cargo fmt --all --check      # Check without modifying
-```
-
-**Documentation:**
-
-```sh
-cargo doc --all-features --no-deps        # Build docs
-cargo doc --all-features --no-deps --open # Build and open in browser
-
-# Check for documentation issues
-RUSTDOCFLAGS="-D rustdoc::all -A rustdoc::private-doc-tests" cargo doc --all-features --no-deps
-```
-
-### Markdown
-
-- Use `prettier` for formatting documentation and markdown files
-- Follow CommonMark specification
-
-### Code conventions
+## Code conventions
 
 - Use descriptive variable names (e.g., `mmsi`, `speed_over_ground`, `latitude`)
 - Prefer declarative deku attributes for binary decoding
@@ -108,13 +28,6 @@ RUSTDOCFLAGS="-D rustdoc::all -A rustdoc::private-doc-tests" cargo doc --all-fea
 
 - Ensure latest commmit on master has no failing CI actions
 - `cargo release [patch,minor]`
-
-## Decoding specifications and test data
-
-### Test samples
-
-- `crates/rs162/data/ais_nmea.txt`: sample nmea sentences for testing parsers
-- `crates/rs162/data/ais_96k.bin`: sample iq data for testing demodulators
 
 ## Git workflow and commits
 

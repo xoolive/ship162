@@ -16,10 +16,14 @@
 //! # Example
 //! ```rust
 //! use num_complex::Complex;
+//! use rs162::dsp::scatter::ScatterPLL;
+//! use rs162::dsp::Tag;
+//!
 //! let mut pll = ScatterPLL::new(4);
 //! let data = vec![Complex::new(1.0, 0.0), Complex::new(0.0, 1.0)];
 //! let mut tag = Tag::default();
 //! let outputs = pll.receive_scatter(&data, &mut tag);
+//! assert_eq!(outputs.len(), 4);
 //! ```
 use super::Tag;
 use num_complex::Complex;

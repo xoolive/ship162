@@ -19,11 +19,15 @@
 //! # Example
 //! ```rust
 //! use num_complex::Complex;
-//! use crate::dsp::rotate::Rotate;
+//! use rs162::dsp::rotate::Rotate;
+//! use rs162::dsp::Tag;
 //!
-//! let mut rot = Rotate::new(std::f32::consts::PI * 25000.0 / 48000.0);
-//! let input: Vec<Complex<f32>> = /* ... */;
+//! let mut rot = Rotate::new(std::f32::consts::PI * 25_000.0 / 48_000.0);
+//! let input = vec![Complex::new(1.0, 0.0); 4];
+//! let mut tag = Tag::default();
 //! let (up, down) = rot.receive_dual(&input, &mut tag);
+//! assert_eq!(up.len(), input.len());
+//! assert_eq!(down.len(), input.len());
 //! ```
 use super::{Stream, Tag};
 use num_complex::Complex;

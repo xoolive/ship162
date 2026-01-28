@@ -26,9 +26,15 @@
 //! # Example
 //!
 //! ```rust
-//! use crate::dsp::ema::PhaseSearchEMA;
+//! use num_complex::Complex;
+//! use rs162::dsp::ema::PhaseSearchEMA;
+//! use rs162::dsp::{Stream, Tag};
+//!
 //! let mut demod = PhaseSearchEMA::with_params(2);
+//! let input_samples = vec![Complex::new(1.0, 0.0); 8];
+//! let mut tag = Tag::default();
 //! let symbols = demod.receive(&input_samples, &mut tag);
+//! assert_eq!(symbols.len(), input_samples.len());
 //! ```
 //!
 //! # References

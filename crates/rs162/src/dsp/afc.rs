@@ -15,13 +15,14 @@
 //! # Example
 //! ```rust
 //! use num_complex::Complex;
-//! use crate::dsp::afc::SquareFreqOffsetCorrection;
+//! use rs162::dsp::afc::SquareFreqOffsetCorrection;
+//! use rs162::dsp::{Stream, Tag};
 //!
-//! let mut afc = SquareFreqOffsetCorrection::with_params(1024, 32, false);
+//! let mut afc = SquareFreqOffsetCorrection::with_params(64, 4, false);
 //! let mut tag = Tag::default();
-//! let input: Vec<Complex<f32>> = /* ... */;
+//! let input = vec![Complex::new(0.1, 0.0); 64];
 //! let corrected = afc.receive(&input, &mut tag);
-//! println!("Estimated frequency offset: {}", tag.ppm);
+//! assert_eq!(corrected.len(), input.len());
 //! ```
 //!
 //! # Implementation Details
