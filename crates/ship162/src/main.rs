@@ -350,7 +350,6 @@ async fn main() -> Result<()> {
                 // Get configuration from source or use defaults
                 let gain = source.gain.unwrap_or(sources::AIS_RTLSDR_GAIN);
                 let bias_tee = source.bias_tee.unwrap_or(false);
-                let gain_element = source.gain_element.as_deref().unwrap_or("TUNER");
                 // Use specified sample rate or default to 288 kHz
                 let sample_rate = soapy_path.sample_rate.unwrap_or(AIS_SAMPLE_RATE_288K);
 
@@ -358,7 +357,6 @@ async fn main() -> Result<()> {
                     &args,
                     sample_rate,
                     Some(gain),
-                    gain_element,
                     bias_tee,
                 )
                 .await?;

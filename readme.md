@@ -107,7 +107,6 @@ gain = 49.6
 [[sources]]
 soapy = "driver=rtlsdr"
 gain = 49.6
-gain_element = "TUNER"  # Optional: specify gain element
 bias_tee = false
 
 # PlutoSDR by IP address
@@ -158,7 +157,6 @@ SoapySDR sources use a driver string:
 Common options:
 
 - `gain`: Gain in dB
-- `gain_element`: Gain element name (default: "TUNER")
 - `bias_tee`: Enable/disable bias-tee
 
 #### PlutoSDR Sources

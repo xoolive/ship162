@@ -143,9 +143,6 @@ pub struct Source {
     /// Enable bias-tee to power external LNA (RTL-SDR and SoapySDR, default: false)
     #[cfg(any(feature = "rtlsdr", feature = "soapy"))]
     pub bias_tee: Option<bool>,
-    /// Gain element for SoapySDR (default: "TUNER")
-    #[cfg(feature = "soapy")]
-    pub gain_element: Option<String>,
 }
 
 // Custom deserializer to ensure proper validation
@@ -163,8 +160,6 @@ impl<'de> Deserialize<'de> for Source {
             gain: Option<f64>,
             #[cfg(any(feature = "rtlsdr", feature = "soapy"))]
             bias_tee: Option<bool>,
-            #[cfg(feature = "soapy")]
-            gain_element: Option<String>,
         }
 
         let helper = SourceHelper::deserialize(deserializer)?;
@@ -175,8 +170,6 @@ impl<'de> Deserialize<'de> for Source {
             gain: helper.gain,
             #[cfg(any(feature = "rtlsdr", feature = "soapy"))]
             bias_tee: helper.bias_tee,
-            #[cfg(feature = "soapy")]
-            gain_element: helper.gain_element,
         })
     }
 }
@@ -264,8 +257,6 @@ impl FromStr for Source {
             gain: None,
             #[cfg(any(feature = "rtlsdr", feature = "soapy"))]
             bias_tee: None,
-            #[cfg(feature = "soapy")]
-            gain_element: None,
         };
 
         Ok(source)
@@ -520,7 +511,6 @@ mod tests {
                 soapy = { args = "driver=rtlsdr" }
                 gain = 49.6
                 bias_tee = false
-                gain_element = "TUNER"
             "#;
             let source: Source = toml::from_str(toml).expect("Failed to parse SoapySDR");
             if let Address::Soapy(path) = &source.address {
@@ -529,7 +519,6 @@ mod tests {
             }
             assert_eq!(source.gain, Some(49.6));
             assert_eq!(source.bias_tee, Some(false));
-            assert_eq!(source.gain_element, Some("TUNER".to_string()));
         }
     }
 

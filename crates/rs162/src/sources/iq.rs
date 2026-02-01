@@ -113,7 +113,6 @@ impl AisIqSource {
         channel: usize,
         sample_rate: u32,
         gain: Option<f64>,
-        gain_element: &str,
         bias_tee: bool,
     ) -> Result<Self> {
         let soapy_config = SoapyConfig {
@@ -280,7 +279,6 @@ impl AisAsyncIqSource {
         args: &str,
         sample_rate: u32,
         gain: Option<f64>,
-        gain_element: &str,
         bias_tee: bool,
     ) -> impl std::future::Future<Output = Result<AisAsyncIqSource>> {
         let soapy_config = SoapyConfig {
