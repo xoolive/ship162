@@ -1,13 +1,17 @@
-use desperado::{rtlsdr::DeviceSelector, Result};
+use desperado::{rtlsdr::DeviceSelector, Gain, Result};
 use futures::StreamExt; // for .next().await
 use rs162::{dsp::ais::AIS_SAMPLE_RATE_288K, sources::iq::AisAsyncIqSource};
 use serde_json::json;
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    let mut receiver =
-        AisAsyncIqSource::from_rtlsdr(DeviceSelector::Index(0), AIS_SAMPLE_RATE_288K, None, false)
-            .await?;
+    let mut receiver = AisAsyncIqSource::from_rtlsdr(
+        DeviceSelector::Index(0),
+        AIS_SAMPLE_RATE_288K,
+        Gain::Manual(49.6),
+        false,
+    )
+    .await?;
 
     while let Some(msg_res) = receiver.next().await {
         match msg_res {

@@ -1,5 +1,7 @@
 use std::str::FromStr;
 
+#[cfg(any(feature = "rtlsdr", feature = "soapy", feature = "pluto"))]
+use desperado::Gain;
 use rs162::{
     decode::ais::type24,
     prelude::{Message, MmsiInfo},
@@ -139,13 +141,12 @@ pub struct Source {
     pub address: Address,
     /// Gain setting for SDR devices (RTL-SDR/Soapy default: 49.6, PlutoSDR default: 73.0)
     #[cfg(any(feature = "rtlsdr", feature = "soapy", feature = "pluto"))]
-    pub gain: Option<f64>,
+    pub gain: Option<Gain>,
+    #[cfg(any(feature = "rtlsdr", feature = "soapy", feature = "pluto"))]
+    pub sample_rate: Option<f64>,
     /// Enable bias-tee to power external LNA (RTL-SDR and SoapySDR, default: false)
     #[cfg(any(feature = "rtlsdr", feature = "soapy"))]
     pub bias_tee: Option<bool>,
-    /// Gain element for SoapySDR (default: "TUNER")
-    #[cfg(feature = "soapy")]
-    pub gain_element: Option<String>,
 }
 
 // Custom deserializer to ensure proper validation
@@ -160,11 +161,11 @@ impl<'de> Deserialize<'de> for Source {
             #[serde(flatten)]
             address: Address,
             #[cfg(any(feature = "rtlsdr", feature = "soapy", feature = "pluto"))]
-            gain: Option<f64>,
+            gain: Option<Gain>,
+            #[cfg(any(feature = "rtlsdr", feature = "soapy", feature = "pluto"))]
+            sample_rate: Option<f64>,
             #[cfg(any(feature = "rtlsdr", feature = "soapy"))]
             bias_tee: Option<bool>,
-            #[cfg(feature = "soapy")]
-            gain_element: Option<String>,
         }
 
         let helper = SourceHelper::deserialize(deserializer)?;
@@ -173,10 +174,10 @@ impl<'de> Deserialize<'de> for Source {
             address: helper.address,
             #[cfg(any(feature = "rtlsdr", feature = "soapy", feature = "pluto"))]
             gain: helper.gain,
+            #[cfg(any(feature = "rtlsdr", feature = "soapy", feature = "pluto"))]
+            sample_rate: helper.sample_rate,
             #[cfg(any(feature = "rtlsdr", feature = "soapy"))]
             bias_tee: helper.bias_tee,
-            #[cfg(feature = "soapy")]
-            gain_element: helper.gain_element,
         })
     }
 }
@@ -262,10 +263,10 @@ impl FromStr for Source {
             address,
             #[cfg(any(feature = "rtlsdr", feature = "soapy", feature = "pluto"))]
             gain: None,
+            #[cfg(any(feature = "rtlsdr", feature = "soapy", feature = "pluto"))]
+            sample_rate: None,
             #[cfg(any(feature = "rtlsdr", feature = "soapy"))]
             bias_tee: None,
-            #[cfg(feature = "soapy")]
-            gain_element: None,
         };
 
         Ok(source)
@@ -426,7 +427,7 @@ mod tests {
                 assert_eq!(path.config.device, Some(0));
                 assert_eq!(path.config.serial, None);
             }
-            assert_eq!(source.gain, Some(49.6));
+            assert_eq!(source.gain, Some(Gain::Manual(49.6)));
         }
     }
 
@@ -444,7 +445,7 @@ mod tests {
                 assert_eq!(path.config.device, None);
                 assert_eq!(path.config.serial, Some("00000001".to_string()));
             }
-            assert_eq!(source.gain, Some(49.6));
+            assert_eq!(source.gain, Some(Gain::Manual(49.6)));
             assert_eq!(source.bias_tee, Some(true));
         }
     }
@@ -485,7 +486,7 @@ mod tests {
                     PlutoPath::Long(_config) => panic!("Expected Short variant, got Long"),
                 }
             }
-            assert_eq!(source.gain, Some(73.0));
+            assert_eq!(source.gain, Some(Gain::Manual(73.0)));
         }
     }
 
@@ -508,7 +509,7 @@ mod tests {
                     }
                 }
             }
-            assert_eq!(source.gain, Some(73.0));
+            assert_eq!(source.gain, Some(Gain::Manual(73.0)));
         }
     }
 
@@ -520,16 +521,14 @@ mod tests {
                 soapy = { args = "driver=rtlsdr" }
                 gain = 49.6
                 bias_tee = false
-                gain_element = "TUNER"
             "#;
             let source: Source = toml::from_str(toml).expect("Failed to parse SoapySDR");
             if let Address::Soapy(path) = &source.address {
                 assert_eq!(path.args, "driver=rtlsdr");
                 assert_eq!(path.sample_rate, None);
             }
-            assert_eq!(source.gain, Some(49.6));
+            assert_eq!(source.gain, Some(Gain::Manual(49.6)));
             assert_eq!(source.bias_tee, Some(false));
-            assert_eq!(source.gain_element, Some("TUNER".to_string()));
         }
     }
 
@@ -547,7 +546,7 @@ mod tests {
                 assert_eq!(path.args, "driver=airspy");
                 assert_eq!(path.sample_rate, Some(3000000));
             }
-            assert_eq!(source.gain, Some(49.6));
+            assert_eq!(source.gain, Some(Gain::Manual(49.6)));
         }
     }
 

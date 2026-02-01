@@ -52,14 +52,12 @@ bias_tee = false   # Enable to power external LNA (default: false)
 # [[sources]]
 # soapy = { args = "driver=rtlsdr" }
 # gain = 49.6
-# gain_element = "TUNER"  # SoapySDR gain element (default: "TUNER")
 # bias_tee = false
 
 # Example 6: Airspy Mini at 3 MS/s (automatically upsampled to 3.072 MS/s)
 # [[sources]]
 # soapy = { args = "driver=airspy", sample_rate = 3000000 }
 # gain = 49.6
-# gain_element = "TUNER"
 
 # --- PlutoSDR Examples ---
 
