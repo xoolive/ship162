@@ -122,7 +122,6 @@ impl AisIqSource {
             sample_rate: sample_rate as f64,
             channel,
             gain: gain.map(Gain::Manual).unwrap_or(Gain::Manual(SOAPY_GAIN)),
-            gain_element: gain_element.to_string(),
             bias_tee,
         };
         let config = DeviceConfig::Soapy(soapy_config);
@@ -290,7 +289,6 @@ impl AisAsyncIqSource {
             sample_rate: sample_rate as f64,
             channel: 0,
             gain: gain.map(Gain::Manual).unwrap_or(Gain::Manual(SOAPY_GAIN)),
-            gain_element: gain_element.to_string(),
             bias_tee,
         };
         let config = DeviceConfig::Soapy(soapy_config);
