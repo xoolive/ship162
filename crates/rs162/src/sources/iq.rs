@@ -244,13 +244,13 @@ impl AisAsyncIqSource {
     pub fn from_pluto(
         uri: &str,
         sample_rate: u32,
-        gain: Option<f64>,
+        gain: Gain,
     ) -> impl std::future::Future<Output = Result<AisAsyncIqSource>> + '_ {
         let pluto_config = PlutoConfig {
             uri: uri.to_string(),
             center_freq: AIS_FREQ as i64,
             sample_rate: sample_rate as i64,
-            gain: gain.map(Gain::Manual).unwrap_or(Gain::Manual(PLUTO_GAIN)),
+            gain,
         };
         let config = DeviceConfig::Pluto(pluto_config);
         Self::from_device_config(config, sample_rate)
@@ -260,14 +260,14 @@ impl AisAsyncIqSource {
     pub fn from_rtlsdr(
         device: DeviceSelector,
         sample_rate: u32,
-        gain: Option<f64>,
+        gain: Gain,
         bias_tee: bool,
     ) -> impl std::future::Future<Output = Result<AisAsyncIqSource>> {
         let rtlsdr_config = RtlSdrConfig {
             device,
             center_freq: AIS_FREQ,
             sample_rate,
-            gain: gain.map(Gain::Manual).unwrap_or(Gain::Manual(RTLSDR_GAIN)),
+            gain,
             bias_tee,
         };
         let config = DeviceConfig::RtlSdr(rtlsdr_config);
@@ -278,7 +278,7 @@ impl AisAsyncIqSource {
     pub fn from_soapy(
         args: &str,
         sample_rate: u32,
-        gain: Option<f64>,
+        gain: Gain,
         bias_tee: bool,
     ) -> impl std::future::Future<Output = Result<AisAsyncIqSource>> {
         let soapy_config = SoapyConfig {
@@ -286,7 +286,7 @@ impl AisAsyncIqSource {
             center_freq: AIS_FREQ as f64,
             sample_rate: sample_rate as f64,
             channel: 0,
-            gain: gain.map(Gain::Manual).unwrap_or(Gain::Manual(SOAPY_GAIN)),
+            gain,
             bias_tee,
         };
         let config = DeviceConfig::Soapy(soapy_config);

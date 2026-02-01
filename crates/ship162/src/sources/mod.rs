@@ -1,5 +1,7 @@
 use std::str::FromStr;
 
+#[cfg(any(feature = "rtlsdr", feature = "soapy", feature = "pluto"))]
+use desperado::Gain;
 use rs162::{
     decode::ais::type24,
     prelude::{Message, MmsiInfo},
@@ -139,7 +141,9 @@ pub struct Source {
     pub address: Address,
     /// Gain setting for SDR devices (RTL-SDR/Soapy default: 49.6, PlutoSDR default: 73.0)
     #[cfg(any(feature = "rtlsdr", feature = "soapy", feature = "pluto"))]
-    pub gain: Option<f64>,
+    pub gain: Option<Gain>,
+    #[cfg(any(feature = "rtlsdr", feature = "soapy", feature = "pluto"))]
+    pub sample_rate: Option<f64>,
     /// Enable bias-tee to power external LNA (RTL-SDR and SoapySDR, default: false)
     #[cfg(any(feature = "rtlsdr", feature = "soapy"))]
     pub bias_tee: Option<bool>,
@@ -157,7 +161,9 @@ impl<'de> Deserialize<'de> for Source {
             #[serde(flatten)]
             address: Address,
             #[cfg(any(feature = "rtlsdr", feature = "soapy", feature = "pluto"))]
-            gain: Option<f64>,
+            gain: Option<Gain>,
+            #[cfg(any(feature = "rtlsdr", feature = "soapy", feature = "pluto"))]
+            sample_rate: Option<f64>,
             #[cfg(any(feature = "rtlsdr", feature = "soapy"))]
             bias_tee: Option<bool>,
         }
@@ -168,6 +174,8 @@ impl<'de> Deserialize<'de> for Source {
             address: helper.address,
             #[cfg(any(feature = "rtlsdr", feature = "soapy", feature = "pluto"))]
             gain: helper.gain,
+            #[cfg(any(feature = "rtlsdr", feature = "soapy", feature = "pluto"))]
+            sample_rate: helper.sample_rate,
             #[cfg(any(feature = "rtlsdr", feature = "soapy"))]
             bias_tee: helper.bias_tee,
         })
@@ -255,6 +263,8 @@ impl FromStr for Source {
             address,
             #[cfg(any(feature = "rtlsdr", feature = "soapy", feature = "pluto"))]
             gain: None,
+            #[cfg(any(feature = "rtlsdr", feature = "soapy", feature = "pluto"))]
+            sample_rate: None,
             #[cfg(any(feature = "rtlsdr", feature = "soapy"))]
             bias_tee: None,
         };
@@ -417,7 +427,7 @@ mod tests {
                 assert_eq!(path.config.device, Some(0));
                 assert_eq!(path.config.serial, None);
             }
-            assert_eq!(source.gain, Some(49.6));
+            assert_eq!(source.gain, Some(Gain::Manual(49.6)));
         }
     }
 
@@ -435,7 +445,7 @@ mod tests {
                 assert_eq!(path.config.device, None);
                 assert_eq!(path.config.serial, Some("00000001".to_string()));
             }
-            assert_eq!(source.gain, Some(49.6));
+            assert_eq!(source.gain, Some(Gain::Manual(49.6)));
             assert_eq!(source.bias_tee, Some(true));
         }
     }
@@ -476,7 +486,7 @@ mod tests {
                     PlutoPath::Long(_config) => panic!("Expected Short variant, got Long"),
                 }
             }
-            assert_eq!(source.gain, Some(73.0));
+            assert_eq!(source.gain, Some(Gain::Manual(73.0)));
         }
     }
 
@@ -499,7 +509,7 @@ mod tests {
                     }
                 }
             }
-            assert_eq!(source.gain, Some(73.0));
+            assert_eq!(source.gain, Some(Gain::Manual(73.0)));
         }
     }
 
@@ -517,7 +527,7 @@ mod tests {
                 assert_eq!(path.args, "driver=rtlsdr");
                 assert_eq!(path.sample_rate, None);
             }
-            assert_eq!(source.gain, Some(49.6));
+            assert_eq!(source.gain, Some(Gain::Manual(49.6)));
             assert_eq!(source.bias_tee, Some(false));
         }
     }
@@ -536,7 +546,7 @@ mod tests {
                 assert_eq!(path.args, "driver=airspy");
                 assert_eq!(path.sample_rate, Some(3000000));
             }
-            assert_eq!(source.gain, Some(49.6));
+            assert_eq!(source.gain, Some(Gain::Manual(49.6)));
         }
     }
 
