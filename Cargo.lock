@@ -1016,7 +1016,7 @@ dependencies = [
  "industrial-io",
  "num-complex",
  "pluto-sdr",
- "rtl-sdr-rs",
+ "rtl-sdr-rs 0.2.1",
  "rusb",
  "soapysdr",
  "tokio",
@@ -3055,7 +3055,7 @@ dependencies = [
  "num-complex",
  "once_cell",
  "paho-mqtt",
- "rtl-sdr-rs",
+ "rtl-sdr-rs 0.3.0",
  "serde",
  "serde_json",
  "ssh2-config",
@@ -3090,6 +3090,18 @@ name = "rtl-sdr-rs"
 version = "0.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "595a48d5cb78bbc4775fe4c09fb502038be9f062eb374de14f391a61a3c0eac4"
+dependencies = [
+ "byteorder",
+ "log",
+ "mockall",
+ "rusb",
+]
+
+[[package]]
+name = "rtl-sdr-rs"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a53b37b61d9955c6a362c7929c88d8d7f3653c45c50e4f03fbb79ce0414e9c59"
 dependencies = [
  "byteorder",
  "log",
