@@ -1,6 +1,6 @@
 use std::str::FromStr;
 
-#[cfg(any(feature = "rtlsdr", feature = "soapy", feature = "pluto"))]
+#[cfg(any(feature = "rtlsdr", feature = "soapy"))]
 use desperado::Gain;
 use rs162::{
     decode::ais::type24,
@@ -19,10 +19,8 @@ pub mod mqtt;
 pub mod tcp;
 
 // AIS-specific constants for SDR devices
-#[cfg(any(feature = "rtlsdr", feature = "soapy", feature = "pluto"))]
+#[cfg(any(feature = "rtlsdr", feature = "soapy"))]
 pub const AIS_RTLSDR_GAIN: f64 = 49.6; // Maximum gain recommended for 162 MHz
-#[cfg(feature = "pluto")]
-pub const AIS_PLUTO_GAIN: f64 = 73.0; // Maximum gain for PlutoSDR
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct AddressStruct {
@@ -70,31 +68,6 @@ pub struct RtlSdrDeviceConfig {
     pub sample_rate: Option<u32>,
 }
 
-/// Structured PlutoSDR device configuration for TOML
-#[cfg(feature = "pluto")]
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct PlutoConfig {
-    /// PlutoSDR URI (IP address, USB device, or full URI like "ip:192.168.2.1" or "usb:1")
-    pub pluto: String,
-    /// Optional sample rate in Hz
-    /// If not specified, defaults to 288 kHz
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub sample_rate: Option<u32>,
-}
-
-/// Helper enum for deserializing PlutoSDR configuration from TOML
-/// Supports both simple string format and structured format
-#[cfg(feature = "pluto")]
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(untagged)]
-pub enum PlutoPath {
-    /// Simple string format: pluto = "192.168.2.1"
-    Short(String),
-    /// Structured format: pluto = { pluto = "192.168.2.1", sample_rate = 3000000 }
-    Long(PlutoConfig),
-}
-
 /// Helper struct for deserializing SoapySDR configuration from TOML
 #[cfg(feature = "soapy")]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -122,9 +95,6 @@ pub enum Address {
     /// A SoapySDR device, e.g. `soapy://driver=rtlsdr` or with structured config: `soapy = "driver=rtlsdr"`
     #[cfg(feature = "soapy")]
     Soapy(SoapyPath),
-    /// An ADALM-PLUTO device, e.g. `pluto://192.168.2.1` or with structured config: `pluto = "192.168.2.1"`
-    #[cfg(feature = "pluto")]
-    Pluto(PlutoPath),
     /// An IQ file source
     IqFile(String),
 }
@@ -139,10 +109,10 @@ pub struct Source {
     /// The address to the raw AIS data feed
     #[serde(flatten)]
     pub address: Address,
-    /// Gain setting for SDR devices (RTL-SDR/Soapy default: 49.6, PlutoSDR default: 73.0)
-    #[cfg(any(feature = "rtlsdr", feature = "soapy", feature = "pluto"))]
+    /// Gain setting for SDR devices (RTL-SDR/Soapy default: 49.6, etc.)
+    #[cfg(any(feature = "rtlsdr", feature = "soapy"))]
     pub gain: Option<Gain>,
-    #[cfg(any(feature = "rtlsdr", feature = "soapy", feature = "pluto"))]
+    #[cfg(any(feature = "rtlsdr", feature = "soapy"))]
     pub sample_rate: Option<f64>,
     /// Enable bias-tee to power external LNA (RTL-SDR and SoapySDR, default: false)
     #[cfg(any(feature = "rtlsdr", feature = "soapy"))]
@@ -160,9 +130,9 @@ impl<'de> Deserialize<'de> for Source {
         struct SourceHelper {
             #[serde(flatten)]
             address: Address,
-            #[cfg(any(feature = "rtlsdr", feature = "soapy", feature = "pluto"))]
+            #[cfg(any(feature = "rtlsdr", feature = "soapy"))]
             gain: Option<Gain>,
-            #[cfg(any(feature = "rtlsdr", feature = "soapy", feature = "pluto"))]
+            #[cfg(any(feature = "rtlsdr", feature = "soapy"))]
             sample_rate: Option<f64>,
             #[cfg(any(feature = "rtlsdr", feature = "soapy"))]
             bias_tee: Option<bool>,
@@ -172,9 +142,9 @@ impl<'de> Deserialize<'de> for Source {
 
         Ok(Source {
             address: helper.address,
-            #[cfg(any(feature = "rtlsdr", feature = "soapy", feature = "pluto"))]
+            #[cfg(any(feature = "rtlsdr", feature = "soapy"))]
             gain: helper.gain,
-            #[cfg(any(feature = "rtlsdr", feature = "soapy", feature = "pluto"))]
+            #[cfg(any(feature = "rtlsdr", feature = "soapy"))]
             sample_rate: helper.sample_rate,
             #[cfg(any(feature = "rtlsdr", feature = "soapy"))]
             bias_tee: helper.bias_tee,
@@ -201,18 +171,6 @@ impl FromStr for Source {
             #[cfg(not(feature = "mqtt"))]
             "mqtt" => {
                 return Err("MQTT support is not enabled. Compile with --features mqtt".to_string())
-            }
-
-            #[cfg(feature = "pluto")]
-            "pluto" => {
-                let uri = url.host_str().unwrap_or("192.168.2.1").to_string();
-                Address::Pluto(PlutoPath::Short(uri))
-            }
-            #[cfg(not(feature = "pluto"))]
-            "pluto" => {
-                return Err(
-                    "Pluto SDR support is not enabled. Compile with --features pluto".to_string(),
-                )
             }
             #[cfg(feature = "rtlsdr")]
             "rtlsdr" => {
@@ -261,9 +219,9 @@ impl FromStr for Source {
 
         let source = Source {
             address,
-            #[cfg(any(feature = "rtlsdr", feature = "soapy", feature = "pluto"))]
+            #[cfg(any(feature = "rtlsdr", feature = "soapy"))]
             gain: None,
-            #[cfg(any(feature = "rtlsdr", feature = "soapy", feature = "pluto"))]
+            #[cfg(any(feature = "rtlsdr", feature = "soapy"))]
             sample_rate: None,
             #[cfg(any(feature = "rtlsdr", feature = "soapy"))]
             bias_tee: None,
@@ -468,48 +426,6 @@ mod tests {
                 assert_eq!(path.config.manufacturer, Some("Realtek".to_string()));
                 assert_eq!(path.config.product, Some("RTL2838UHIDIR".to_string()));
             }
-        }
-    }
-
-    #[test]
-    fn test_toml_pluto() {
-        #[cfg(feature = "pluto")]
-        {
-            let toml = r#"
-                pluto = "192.168.2.1"
-                gain = 73.0
-            "#;
-            let source: Source = toml::from_str(toml).expect("Failed to parse PlutoSDR");
-            if let Address::Pluto(path) = &source.address {
-                match path {
-                    PlutoPath::Short(uri) => assert_eq!(uri, "192.168.2.1"),
-                    PlutoPath::Long(_config) => panic!("Expected Short variant, got Long"),
-                }
-            }
-            assert_eq!(source.gain, Some(Gain::Manual(73.0)));
-        }
-    }
-
-    #[test]
-    fn test_toml_pluto_long_format() {
-        #[cfg(feature = "pluto")]
-        {
-            let toml = r#"
-                pluto = { pluto = "ip:192.168.2.1", sample_rate = 3000000 }
-                gain = 73.0
-            "#;
-            let source: Source =
-                toml::from_str(toml).expect("Failed to parse PlutoSDR long format");
-            if let Address::Pluto(path) = &source.address {
-                match path {
-                    PlutoPath::Short(_uri) => panic!("Expected Long variant, got Short"),
-                    PlutoPath::Long(config) => {
-                        assert_eq!(config.pluto, "ip:192.168.2.1");
-                        assert_eq!(config.sample_rate, Some(3000000));
-                    }
-                }
-            }
-            assert_eq!(source.gain, Some(Gain::Manual(73.0)));
         }
     }
 

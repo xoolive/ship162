@@ -103,16 +103,11 @@ gain = 49.6
 rtlsdr = { manufacturer = "Realtek", product = "RTL2838UHIDIR" }
 gain = 49.6
 
-# SoapySDR device (e.g., PlutoSDR, LimeSDR)
+# SoapySDR device 
 [[sources]]
 soapy = "driver=rtlsdr"
 gain = 49.6
 bias_tee = false
-
-# PlutoSDR by IP address
-[[sources]]
-pluto = "192.168.2.1"
-gain = 73.0  # Maximum gain for PlutoSDR
 
 # TCP source (e.g., Norwegian Coastal Administration)
 [[sources]]
@@ -151,23 +146,14 @@ Common options:
 SoapySDR sources use a driver string:
 
 - `soapy = "driver=rtlsdr"` for RTL-SDR via SoapySDR
-- `soapy = "driver=plutosdr"` for PlutoSDR via SoapySDR
 - `soapy = "driver=lime"` for LimeSDR
+
+(Warning: some devices, e.g. Adalm Pluto SDR, do not go as low as 162MHz and cannot demodulate AIS signals)
 
 Common options:
 
 - `gain`: Gain in dB
 - `bias_tee`: Enable/disable bias-tee
-
-#### PlutoSDR Sources
-
-PlutoSDR sources require an IP address or URI:
-
-- `pluto = "192.168.2.1"` or `pluto = "ip:192.168.2.1"`
-
-Common options:
-
-- `gain`: Gain in dB (recommended: 73.0 for AIS)
 
 #### TCP Sources
 

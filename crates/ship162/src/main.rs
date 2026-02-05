@@ -265,35 +265,6 @@ async fn main() -> Result<()> {
                     }
                 })
             }
-            #[cfg(feature = "pluto")]
-            sources::Address::Pluto(pluto_path) => {
-                let pluto_clone = tx.clone();
-
-                // Extract URI and sample rate from either variant
-                let (uri, sample_rate_opt) = match pluto_path {
-                    sources::PlutoPath::Short(uri) => (uri.clone(), None),
-                    sources::PlutoPath::Long(config) => (config.pluto.clone(), config.sample_rate),
-                };
-
-                // Get configuration from source or use defaults
-                let gain = source.gain.unwrap_or(Gain::Manual(sources::AIS_PLUTO_GAIN));
-                let sample_rate = sample_rate_opt.unwrap_or(AIS_SAMPLE_RATE_288K);
-
-                let ais_source = AisAsyncIqSource::from_pluto(&uri, sample_rate, gain).await?;
-                tokio::spawn(async move {
-                    let mut source = Source::new(pluto_clone, ais_source);
-                    tokio::select! {
-                        result = source.run() => {
-                            if let Err(e) = result {
-                                eprintln!("PlutoSDR source error: {}", e);
-                            }
-                        }
-                        _ = shutdown_rx.recv() => {
-                            // Silent shutdown
-                        }
-                    }
-                })
-            }
             #[cfg(feature = "rtlsdr")]
             sources::Address::Rtlsdr(rtl_path) => {
                 use desperado::rtlsdr::DeviceSelector;

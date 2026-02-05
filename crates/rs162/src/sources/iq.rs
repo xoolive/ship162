@@ -11,11 +11,9 @@ use std::pin::Pin;
 use std::task::{Context, Poll};
 use tokio::sync::mpsc;
 
-#[cfg(any(feature = "rtlsdr", feature = "soapy", feature = "pluto"))]
+#[cfg(any(feature = "rtlsdr", feature = "soapy"))]
 use desperado::{DeviceConfig, Gain};
 
-#[cfg(feature = "pluto")]
-use desperado::pluto::PlutoConfig;
 #[cfg(feature = "rtlsdr")]
 use desperado::rtlsdr::{DeviceSelector, RtlSdrConfig};
 #[cfg(feature = "soapy")]
@@ -32,8 +30,6 @@ const AIS_FREQ: u32 = 162_000_000;
 const RTLSDR_GAIN: f64 = 49.6; // Maximum gain for RTL-SDR
 #[cfg(feature = "soapy")]
 const SOAPY_GAIN: f64 = 49.6; // Maximum gain, same as RTL-SDR
-#[cfg(feature = "pluto")]
-const PLUTO_GAIN: f64 = 73.0; // Maximum gain for PlutoSDR
 
 pub struct AisIqSource {
     source: IqSource,
@@ -71,22 +67,10 @@ impl AisIqSource {
     }
 
     /// Create an AIS IQ source from a DeviceConfig for SDR devices
-    #[cfg(any(feature = "rtlsdr", feature = "soapy", feature = "pluto"))]
+    #[cfg(any(feature = "rtlsdr", feature = "soapy"))]
     pub fn from_device_config(config: DeviceConfig, sample_rate: u32) -> Result<Self> {
         let source = IqSource::from_device_config(config)?;
         Ok(Self::new(source, sample_rate))
-    }
-
-    #[cfg(feature = "pluto")]
-    pub fn from_pluto(uri: &str, sample_rate: u32, gain: Option<f64>) -> Result<Self> {
-        let pluto_config = PlutoConfig {
-            uri: uri.to_string(),
-            center_freq: AIS_FREQ as i64,
-            sample_rate: sample_rate as i64,
-            gain: gain.map(Gain::Manual).unwrap_or(Gain::Manual(PLUTO_GAIN)),
-        };
-        let config = DeviceConfig::Pluto(pluto_config);
-        Self::from_device_config(config, sample_rate)
     }
 
     #[cfg(feature = "rtlsdr")]
@@ -227,7 +211,7 @@ impl AisAsyncIqSource {
     }
 
     /// Create an async AIS IQ source from a DeviceConfig for SDR devices
-    #[cfg(any(feature = "rtlsdr", feature = "soapy", feature = "pluto"))]
+    #[cfg(any(feature = "rtlsdr", feature = "soapy"))]
     pub fn from_device_config(
         config: DeviceConfig,
         sample_rate: u32,
@@ -238,22 +222,6 @@ impl AisAsyncIqSource {
             let handle = spawn_demodulator_task(source, tx, sample_rate);
             Ok(AisAsyncIqSource { handle, rx })
         }
-    }
-
-    #[cfg(feature = "pluto")]
-    pub fn from_pluto(
-        uri: &str,
-        sample_rate: u32,
-        gain: Gain,
-    ) -> impl std::future::Future<Output = Result<AisAsyncIqSource>> + '_ {
-        let pluto_config = PlutoConfig {
-            uri: uri.to_string(),
-            center_freq: AIS_FREQ as i64,
-            sample_rate: sample_rate as i64,
-            gain,
-        };
-        let config = DeviceConfig::Pluto(pluto_config);
-        Self::from_device_config(config, sample_rate)
     }
 
     #[cfg(feature = "rtlsdr")]

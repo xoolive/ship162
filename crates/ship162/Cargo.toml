@@ -15,7 +15,6 @@ name = "ship162"
 path = "src/main.rs"
 
 [features]
-pluto = ['desperado/pluto', 'rs162/pluto']
 rtlsdr = ['desperado/rtlsdr', 'rs162/rtlsdr']
 soapy = ['desperado/soapy', 'rs162/soapy']
 mqtt = ["rs162/mqtt"]
