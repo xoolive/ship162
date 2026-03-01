@@ -2954,7 +2954,7 @@ dependencies = [
  "num-complex",
  "once_cell",
  "paho-mqtt",
- "rtl-sdr-rs 0.3.0",
+ "rtl-sdr-rs 0.3.1",
  "serde",
  "serde_json",
  "ssh2-config",
@@ -2998,9 +2998,9 @@ dependencies = [
 
 [[package]]
 name = "rtl-sdr-rs"
-version = "0.3.0"
+version = "0.3.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a53b37b61d9955c6a362c7929c88d8d7f3653c45c50e4f03fbb79ce0414e9c59"
+checksum = "b3e39d1d957178d9bc3d2641e41ea083205f304b6b2db4f6efd60bc45498aa82"
 dependencies = [
  "byteorder",
  "log",
