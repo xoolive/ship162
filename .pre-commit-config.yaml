@@ -1,0 +1,16 @@
+repos:
+  - repo: local
+    hooks:
+      - id: cargo-fmt-check
+        name: cargo fmt --all --check
+        entry: cargo fmt --all --check
+        language: system
+        pass_filenames: false
+        files: '^(crates/.+\.rs|Cargo\.toml|Cargo\.lock)$'
+      - id: cargo-clippy-all-features
+        name: cargo clippy --workspace --all-targets --all-features -- -D warnings
+        entry: cargo clippy --workspace --all-targets --all-features -- -D warnings
+        language: system
+        pass_filenames: false
+        require_serial: true
+        files: '^(crates/.+\.rs|Cargo\.toml|Cargo\.lock)$'
