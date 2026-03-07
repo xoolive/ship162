@@ -972,18 +972,21 @@ dependencies = [
 
 [[package]]
 name = "desperado"
-version = "0.2.1"
+version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "eff65fd670f81d9bafa2dbc7fd322383dbb5a2503a2d79785d4cad004e4f2c16"
+checksum = "0bbf5e41c66e70f995ceb7b59fed2d9bc621ecf93633fb687033ba10046f153a"
 dependencies = [
  "dirs",
  "futures",
  "num-complex",
- "rtl-sdr-rs 0.2.1",
+ "rs-spy",
+ "rtl-sdr-rs",
  "rusb",
  "serde",
  "soapysdr",
  "tokio",
+ "tracing",
+ "tracing-subscriber",
 ]
 
 [[package]]
@@ -2942,6 +2945,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "rs-spy"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d1297344eba07f6960c7bed48331beda82874c6153d8d5559b1aae9be48f651a"
+dependencies = [
+ "num-complex",
+ "rusb",
+ "thiserror 1.0.69",
+ "tracing",
+]
+
+[[package]]
 name = "rs162"
 version = "0.1.3"
 dependencies = [
@@ -2954,7 +2969,7 @@ dependencies = [
  "num-complex",
  "once_cell",
  "paho-mqtt",
- "rtl-sdr-rs 0.3.1",
+ "rtl-sdr-rs",
  "serde",
  "serde_json",
  "ssh2-config",
@@ -2982,18 +2997,6 @@ dependencies = [
  "spki",
  "subtle",
  "zeroize",
-]
-
-[[package]]
-name = "rtl-sdr-rs"
-version = "0.2.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "595a48d5cb78bbc4775fe4c09fb502038be9f062eb374de14f391a61a3c0eac4"
-dependencies = [
- "byteorder",
- "log",
- "mockall",
- "rusb",
 ]
 
 [[package]]

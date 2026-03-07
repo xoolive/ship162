@@ -1,6 +1,6 @@
 use std::str::FromStr;
 
-#[cfg(any(feature = "rtlsdr", feature = "soapy"))]
+#[cfg(any(feature = "rtlsdr", feature = "soapy", feature = "airspy"))]
 use desperado::Gain;
 use rs162::{
     decode::ais::type24,
@@ -81,6 +81,32 @@ pub struct SoapyPath {
     pub sample_rate: Option<u32>,
 }
 
+/// Structured Airspy device configuration for TOML
+#[cfg(feature = "airspy")]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct AirspyPath {
+    #[serde(flatten)]
+    pub config: AirspyDeviceConfig,
+}
+
+/// Airspy device configuration fields
+#[cfg(feature = "airspy")]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct AirspyDeviceConfig {
+    /// Device index (0, 1, 2, ...)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub device: Option<usize>,
+    /// Serial number selector (e.g. "0x35AC63DC2D8C7A4F")
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub serial: Option<String>,
+    /// Optional sample rate in Hz (e.g., 3000000 for Airspy Mini)
+    /// If not specified, defaults to 6 MS/s
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub sample_rate: Option<u32>,
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Address {
@@ -95,6 +121,9 @@ pub enum Address {
     /// A SoapySDR device, e.g. `soapy://driver=rtlsdr` or with structured config: `soapy = "driver=rtlsdr"`
     #[cfg(feature = "soapy")]
     Soapy(SoapyPath),
+    /// An Airspy device, e.g. `airspy://` or with structured config: `airspy = { device = 0 }`
+    #[cfg(feature = "airspy")]
+    Airspy(AirspyPath),
     /// An IQ file source
     IqFile(String),
 }
@@ -109,13 +138,13 @@ pub struct Source {
     /// The address to the raw AIS data feed
     #[serde(flatten)]
     pub address: Address,
-    /// Gain setting for SDR devices (RTL-SDR/Soapy default: 49.6, etc.)
-    #[cfg(any(feature = "rtlsdr", feature = "soapy"))]
+    /// Gain setting for SDR devices (RTL-SDR/Soapy default: 49.6, Airspy default: auto)
+    #[cfg(any(feature = "rtlsdr", feature = "soapy", feature = "airspy"))]
     pub gain: Option<Gain>,
-    #[cfg(any(feature = "rtlsdr", feature = "soapy"))]
+    #[cfg(any(feature = "rtlsdr", feature = "soapy", feature = "airspy"))]
     pub sample_rate: Option<f64>,
-    /// Enable bias-tee to power external LNA (RTL-SDR and SoapySDR, default: false)
-    #[cfg(any(feature = "rtlsdr", feature = "soapy"))]
+    /// Enable bias-tee to power external LNA (RTL-SDR/SoapySDR/Airspy, default: false)
+    #[cfg(any(feature = "rtlsdr", feature = "soapy", feature = "airspy"))]
     pub bias_tee: Option<bool>,
 }
 
@@ -130,11 +159,11 @@ impl<'de> Deserialize<'de> for Source {
         struct SourceHelper {
             #[serde(flatten)]
             address: Address,
-            #[cfg(any(feature = "rtlsdr", feature = "soapy"))]
+            #[cfg(any(feature = "rtlsdr", feature = "soapy", feature = "airspy"))]
             gain: Option<Gain>,
-            #[cfg(any(feature = "rtlsdr", feature = "soapy"))]
+            #[cfg(any(feature = "rtlsdr", feature = "soapy", feature = "airspy"))]
             sample_rate: Option<f64>,
-            #[cfg(any(feature = "rtlsdr", feature = "soapy"))]
+            #[cfg(any(feature = "rtlsdr", feature = "soapy", feature = "airspy"))]
             bias_tee: Option<bool>,
         }
 
@@ -142,14 +171,27 @@ impl<'de> Deserialize<'de> for Source {
 
         Ok(Source {
             address: helper.address,
-            #[cfg(any(feature = "rtlsdr", feature = "soapy"))]
+            #[cfg(any(feature = "rtlsdr", feature = "soapy", feature = "airspy"))]
             gain: helper.gain,
-            #[cfg(any(feature = "rtlsdr", feature = "soapy"))]
+            #[cfg(any(feature = "rtlsdr", feature = "soapy", feature = "airspy"))]
             sample_rate: helper.sample_rate,
-            #[cfg(any(feature = "rtlsdr", feature = "soapy"))]
+            #[cfg(any(feature = "rtlsdr", feature = "soapy", feature = "airspy"))]
             bias_tee: helper.bias_tee,
         })
     }
+}
+
+#[cfg(feature = "airspy")]
+pub fn parse_airspy_serial(value: &str) -> Result<u64, String> {
+    if let Some(hex) = value.strip_prefix("0x") {
+        return u64::from_str_radix(hex, 16)
+            .map_err(|_| format!("Invalid Airspy serial (hex): '{value}'"));
+    }
+
+    value
+        .parse::<u64>()
+        .or_else(|_| u64::from_str_radix(value, 16))
+        .map_err(|_| format!("Invalid Airspy serial: '{value}'"))
 }
 
 impl FromStr for Source {
@@ -198,10 +240,52 @@ impl FromStr for Source {
                     sample_rate: None,
                 })
             }
+            #[cfg(feature = "airspy")]
+            "airspy" => {
+                let device_str = url.host_str().unwrap_or("");
+                let config = if device_str.is_empty() {
+                    AirspyDeviceConfig {
+                        device: Some(0),
+                        serial: None,
+                        sample_rate: None,
+                    }
+                } else if let Ok(idx) = device_str.parse::<usize>() {
+                    AirspyDeviceConfig {
+                        device: Some(idx),
+                        serial: None,
+                        sample_rate: None,
+                    }
+                } else if let Some(serial) = device_str.strip_prefix("serial=") {
+                    AirspyDeviceConfig {
+                        device: None,
+                        serial: Some(serial.to_string()),
+                        sample_rate: None,
+                    }
+                } else {
+                    eprintln!(
+                        "WARNING: Unrecognized Airspy device format: '{}'\n\
+                         Expected device index (0, 1, 2, ...) or 'serial=...'.\n\
+                         Defaulting to device 0.",
+                        device_str
+                    );
+                    AirspyDeviceConfig {
+                        device: Some(0),
+                        serial: None,
+                        sample_rate: None,
+                    }
+                };
+                Address::Airspy(AirspyPath { config })
+            }
             #[cfg(not(feature = "soapy"))]
             "soapy" => {
                 return Err(
                     "SoapySDR support is not enabled. Compile with --features soapy".to_string(),
+                )
+            }
+            #[cfg(not(feature = "airspy"))]
+            "airspy" => {
+                return Err(
+                    "Airspy support is not enabled. Compile with --features airspy".to_string(),
                 )
             }
 
@@ -219,11 +303,11 @@ impl FromStr for Source {
 
         let source = Source {
             address,
-            #[cfg(any(feature = "rtlsdr", feature = "soapy"))]
+            #[cfg(any(feature = "rtlsdr", feature = "soapy", feature = "airspy"))]
             gain: None,
-            #[cfg(any(feature = "rtlsdr", feature = "soapy"))]
+            #[cfg(any(feature = "rtlsdr", feature = "soapy", feature = "airspy"))]
             sample_rate: None,
-            #[cfg(any(feature = "rtlsdr", feature = "soapy"))]
+            #[cfg(any(feature = "rtlsdr", feature = "soapy", feature = "airspy"))]
             bias_tee: None,
         };
 
@@ -467,6 +551,26 @@ mod tests {
     }
 
     #[test]
+    fn test_toml_airspy() {
+        #[cfg(feature = "airspy")]
+        {
+            let toml = r#"
+                airspy = { device = 0, sample_rate = 6000000 }
+                gain = "auto"
+                bias_tee = true
+            "#;
+            let source: Source = toml::from_str(toml).expect("Failed to parse Airspy TOML");
+            if let Address::Airspy(path) = &source.address {
+                assert_eq!(path.config.device, Some(0));
+                assert_eq!(path.config.serial, None);
+                assert_eq!(path.config.sample_rate, Some(6000000));
+            }
+            assert_eq!(source.gain, Some(Gain::Auto));
+            assert_eq!(source.bias_tee, Some(true));
+        }
+    }
+
+    #[test]
     fn test_toml_tcp() {
         let toml = r#"
             tcp = "153.44.253.27:5631"
@@ -515,13 +619,37 @@ mod tests {
     #[test]
     fn test_url_backward_compatibility() {
         // Test that URL string parsing still works
-        let source = Source::from_str("rtlsdr://").expect("Failed to parse rtlsdr:// URL");
         #[cfg(feature = "rtlsdr")]
-        if let Address::Rtlsdr(path) = &source.address {
-            assert_eq!(path.config.device, Some(0)); // Default device
+        {
+            let source = Source::from_str("rtlsdr://").expect("Failed to parse rtlsdr:// URL");
+            if let Address::Rtlsdr(path) = &source.address {
+                assert_eq!(path.config.device, Some(0)); // Default device
+            }
         }
 
         let source = Source::from_str("tcp://153.44.253.27:5631").expect("Failed to parse TCP URL");
         assert!(matches!(source.address, Address::Tcp(_)));
+
+        #[cfg(feature = "airspy")]
+        {
+            let source = Source::from_str("airspy://").expect("Failed to parse airspy:// URL");
+            if let Address::Airspy(path) = &source.address {
+                assert_eq!(path.config.device, Some(0));
+                assert_eq!(path.config.serial, None);
+            }
+
+            let source = Source::from_str("airspy://1").expect("Failed to parse airspy://1 URL");
+            if let Address::Airspy(path) = &source.address {
+                assert_eq!(path.config.device, Some(1));
+                assert_eq!(path.config.serial, None);
+            }
+
+            let source = Source::from_str("airspy://serial=0x35AC63DC2D8C7A4F")
+                .expect("Failed to parse airspy serial URL");
+            if let Address::Airspy(path) = &source.address {
+                assert_eq!(path.config.device, None);
+                assert_eq!(path.config.serial, Some("0x35AC63DC2D8C7A4F".to_string()));
+            }
+        }
     }
 }

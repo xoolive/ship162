@@ -8,6 +8,7 @@ mod tui;
 use anyhow::Result;
 use clap::Parser;
 use crossterm::event::{KeyCode, KeyModifiers};
+#[cfg(any(feature = "rtlsdr", feature = "soapy", feature = "airspy"))]
 use desperado::Gain;
 use redis::AsyncCommands;
 use rs162::dsp::ais::AIS_SAMPLE_RATE_288K;
@@ -28,7 +29,7 @@ use rs162::sources::AisAsyncIqSource;
 #[derive(Default, Deserialize, Parser)]
 #[command(
     name = "ship162",
-    about = "A lightweight AIS receiver and viewer using RTL-SDR and TCP sources"
+    about = "A lightweight AIS receiver and viewer using SDR, TCP, and MQTT sources"
 )]
 struct Options {
     /// Activate JSON output to stdout
@@ -335,6 +336,47 @@ async fn main() -> Result<()> {
                         result = source.run() => {
                             if let Err(e) = result {
                                 eprintln!("SoapySDR source error: {}", e);
+                            }
+                        }
+                        _ = shutdown_rx.recv() => {
+                            // Silent shutdown
+                        }
+                    }
+                })
+            }
+            #[cfg(feature = "airspy")]
+            sources::Address::Airspy(airspy_path) => {
+                use desperado::airspy::DeviceSelector as AirspyDeviceSelector;
+
+                let airspy_clone = tx.clone();
+
+                let config = &airspy_path.config;
+                let device = if let Some(idx) = config.device {
+                    AirspyDeviceSelector::Index(idx)
+                } else if let Some(ref serial) = config.serial {
+                    match sources::parse_airspy_serial(serial) {
+                        Ok(value) => AirspyDeviceSelector::Serial(value),
+                        Err(message) => {
+                            eprintln!("WARNING: {message}. Defaulting to Airspy device 0.");
+                            AirspyDeviceSelector::Index(0)
+                        }
+                    }
+                } else {
+                    AirspyDeviceSelector::Index(0)
+                };
+
+                let gain = source.gain.unwrap_or(Gain::Auto);
+                let bias_tee = source.bias_tee.unwrap_or(false);
+                let sample_rate = config.sample_rate.unwrap_or(6_000_000);
+
+                let ais_source =
+                    AisAsyncIqSource::from_airspy(device, sample_rate, gain, bias_tee).await?;
+                tokio::spawn(async move {
+                    let mut source = Source::new(airspy_clone, ais_source);
+                    tokio::select! {
+                        result = source.run() => {
+                            if let Err(e) = result {
+                                eprintln!("Airspy source error: {}", e);
                             }
                         }
                         _ = shutdown_rx.recv() => {

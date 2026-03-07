@@ -12,8 +12,14 @@ use std::task::{Context, Poll};
 use tokio::sync::mpsc;
 
 #[cfg(any(feature = "rtlsdr", feature = "soapy"))]
-use desperado::{DeviceConfig, Gain};
+use desperado::DeviceConfig;
+#[cfg(any(feature = "rtlsdr", feature = "soapy", feature = "airspy"))]
+use desperado::Gain;
 
+#[cfg(feature = "airspy")]
+use desperado::airspy::{
+    AirspyConfig, AsyncAirspySdrReader, DeviceSelector as AirspyDeviceSelector,
+};
 #[cfg(feature = "rtlsdr")]
 use desperado::rtlsdr::{DeviceSelector, RtlSdrConfig};
 #[cfg(feature = "soapy")]
@@ -259,6 +265,32 @@ impl AisAsyncIqSource {
         };
         let config = DeviceConfig::Soapy(soapy_config);
         Self::from_device_config(config, sample_rate)
+    }
+
+    #[cfg(feature = "airspy")]
+    pub fn from_airspy(
+        device: AirspyDeviceSelector,
+        sample_rate: u32,
+        gain: Gain,
+        bias_tee: bool,
+    ) -> impl std::future::Future<Output = Result<AisAsyncIqSource>> {
+        let airspy_config = AirspyConfig {
+            device,
+            center_freq: AIS_FREQ,
+            sample_rate,
+            gain,
+            bias_tee,
+            packing: false,
+            lna_gain: None,
+            mixer_gain: None,
+            vga_gain: None,
+        };
+        let (tx, rx) = mpsc::channel::<Result<AisDemodulatedMessage>>(32);
+        async move {
+            let source = IqAsyncSource::Airspy(AsyncAirspySdrReader::new(&airspy_config)?);
+            let handle = spawn_demodulator_task(source, tx, sample_rate);
+            Ok(AisAsyncIqSource { handle, rx })
+        }
     }
 }
 
