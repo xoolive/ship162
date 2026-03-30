@@ -83,6 +83,7 @@ impl TcpSource {
                             signal_level: None,
                             message,
                             mmsi_info: None,
+                            nmea_sentences: vec![],
                         };
                         self.tx.send(sentence).await?;
                     }
@@ -106,6 +107,7 @@ impl TcpSource {
                         signal_level: None,
                         message,
                         mmsi_info: None,
+                        nmea_sentences: vec![],
                     };
                     self.tx.send(sentence).await?;
                 }

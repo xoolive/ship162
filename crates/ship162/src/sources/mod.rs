@@ -324,6 +324,8 @@ pub struct TimedMessage {
     pub message: Message,
     #[serde(flatten)]
     pub mmsi_info: Option<MmsiInfo>,
+    #[serde(skip)]
+    pub nmea_sentences: Vec<String>,
 }
 
 pub async fn process_sentence(mut state: MutexGuard<'_, AppState>, sentence: &mut TimedMessage) {
