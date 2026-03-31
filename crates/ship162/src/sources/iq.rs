@@ -20,12 +20,14 @@ impl Source {
 
         while let Some(msg_res) = self.source.next().await {
             if let Ok(msg) = msg_res {
-                if let Some(ais_msg) = msg.decode() {
+                let encoded = msg.encode_nmea();
+                if let Some(ais_msg) = encoded.decode() {
                     let sentence = super::TimedMessage {
-                        timestamp: msg.timestamp,
-                        signal_level: Some(msg.signal_level),
+                        timestamp: encoded.timestamp,
+                        signal_level: Some(encoded.signal_level),
                         message: ais_msg,
                         mmsi_info: None,
+                        nmea_sentences: encoded.nmea_sentences,
                     };
                     self.tx.send(sentence).await?;
                 }

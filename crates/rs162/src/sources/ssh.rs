@@ -32,6 +32,14 @@ pub struct TunnelledTcp {
     pub jump: String,
 }
 
+/// Configuration for tunnelled WebSocket connection
+pub struct TunnelledWebsocket {
+    pub address: String,
+    pub port: u16,
+    pub url: String,
+    pub jump: String,
+}
+
 async fn authenticate_server(mut client_rx: ClientReceiver, host: String, port: u16) {
     let mut hosts_path = dirs::home_dir().unwrap();
     hosts_path.push(".ssh");
@@ -321,6 +329,33 @@ impl TunnelledTcp {
             .expect(&err_msg);
 
         Ok(TunnelReader::new(tunnel_rx))
+    }
+}
+
+impl TunnelledWebsocket {
+    pub async fn connect(&self) -> Result<TunnelStream, BoxError> {
+        let params = get_params();
+
+        let target_client = connect_server(&self.jump, &params, CONNECTION_MAP.clone())
+            .await
+            .map_err(|e| {
+                let msg = format!("Could not connect to jump host {}: {}", &self.jump, e);
+                BoxError::from(msg)
+            })?;
+
+        let channel_config = makiko::ChannelConfig::default();
+        let connect_addr = (self.address.to_owned(), self.port);
+        let origin_addr = ("0.0.0.0".into(), 0);
+
+        let (tunnel, tunnel_rx) = target_client
+            .connect_tunnel(channel_config, connect_addr.clone(), origin_addr)
+            .await
+            .map_err(|e| {
+                let msg = format!("Could not open a tunnel to {:?}: {}", connect_addr, e);
+                BoxError::from(msg)
+            })?;
+
+        Ok(TunnelStream::new(tunnel, tunnel_rx))
     }
 }
 

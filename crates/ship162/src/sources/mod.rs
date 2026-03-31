@@ -17,6 +17,7 @@ pub mod iq;
 #[cfg(feature = "mqtt")]
 pub mod mqtt;
 pub mod tcp;
+pub mod websocket;
 
 // AIS-specific constants for SDR devices
 #[cfg(any(feature = "rtlsdr", feature = "soapy"))]
@@ -34,6 +35,19 @@ pub struct AddressStruct {
 pub enum AddressPath {
     Short(String),
     Long(AddressStruct),
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct WsStruct {
+    pub url: String,
+    pub jump: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum WsPath {
+    Short(String),
+    Long(WsStruct),
 }
 
 /// Structured RTL-SDR device configuration for TOML
@@ -124,6 +138,8 @@ pub enum Address {
     /// An Airspy device, e.g. `airspy://` or with structured config: `airspy = { device = 0 }`
     #[cfg(feature = "airspy")]
     Airspy(AirspyPath),
+    /// A WebSocket source (e.g. `ws://host:port/path` or `{ url = "ws://...", jump = "host" }`)
+    Ws(WsPath),
     /// An IQ file source
     IqFile(String),
 }
@@ -289,6 +305,8 @@ impl FromStr for Source {
                 )
             }
 
+            "ws" | "wss" => Address::Ws(WsPath::Short(s.to_string())),
+
             "file" => {
                 let path = url
                     .to_file_path()
@@ -324,6 +342,8 @@ pub struct TimedMessage {
     pub message: Message,
     #[serde(flatten)]
     pub mmsi_info: Option<MmsiInfo>,
+    #[serde(skip)]
+    pub nmea_sentences: Vec<String>,
 }
 
 pub async fn process_sentence(mut state: MutexGuard<'_, AppState>, sentence: &mut TimedMessage) {

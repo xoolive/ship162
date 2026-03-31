@@ -1,5 +1,6 @@
 #![doc = include_str!("../readme.md")]
 
+mod outputs;
 mod sources;
 mod state;
 mod table;
@@ -23,6 +24,7 @@ use crate::sources::iq::Source;
 #[cfg(feature = "mqtt")]
 use crate::sources::mqtt::MqttSource;
 use crate::sources::tcp::TcpSource;
+use crate::sources::websocket::WsSource;
 use crate::tui::{Event, EventHandler};
 use rs162::sources::AisAsyncIqSource;
 
@@ -71,6 +73,23 @@ struct Options {
     #[arg(long, value_name = "SECONDS")]
     #[serde(default)]
     redis_retry_interval: Option<u64>,
+
+    /// Serve decoded AIS as NMEA on TCP (e.g., 0.0.0.0:5631)
+    #[arg(long, value_name = "ADDR")]
+    serve_tcp: Option<String>,
+
+    /// Serve decoded AIS as NMEA on UDP (e.g., 0.0.0.0:5632)
+    #[arg(long, value_name = "ADDR")]
+    serve_udp: Option<String>,
+
+    /// Serve decoded AIS as NMEA on WebSocket (e.g., 0.0.0.0:8080)
+    #[arg(long, value_name = "ADDR")]
+    serve_ws: Option<String>,
+
+    /// Static UDP targets to send NMEA to (e.g., feedme.mode-s.org:88888)
+    #[arg(long, value_name = "ADDR")]
+    #[serde(default)]
+    udp_targets: Vec<String>,
 }
 
 #[tokio::main]
@@ -124,6 +143,18 @@ async fn main() -> Result<()> {
     }
     if cli_options.redis_retry_interval.is_some() {
         options.redis_retry_interval = cli_options.redis_retry_interval;
+    }
+    if cli_options.serve_tcp.is_some() {
+        options.serve_tcp = cli_options.serve_tcp;
+    }
+    if cli_options.serve_udp.is_some() {
+        options.serve_udp = cli_options.serve_udp;
+    }
+    if cli_options.serve_ws.is_some() {
+        options.serve_ws = cli_options.serve_ws;
+    }
+    if !cli_options.udp_targets.is_empty() {
+        options.udp_targets = cli_options.udp_targets;
     }
     options.sources.append(&mut cli_options.sources);
 
@@ -190,6 +221,59 @@ async fn main() -> Result<()> {
     let (tx, mut rx) = tokio::sync::mpsc::channel(10);
     // Add a shutdown signal channel
     let (shutdown_tx, _shutdown_rx) = tokio::sync::broadcast::channel::<()>(1);
+
+    // NMEA broadcast channel for output servers (TCP/UDP/WebSocket)
+    let (nmea_tx, _nmea_rx) = tokio::sync::broadcast::channel::<String>(4096);
+
+    // Spawn output servers
+    if let Some(ref addr) = options.serve_tcp {
+        let addr: std::net::SocketAddr = addr.parse().expect("Invalid serve_tcp address");
+        let shutdown = shutdown_tx.subscribe();
+        let tx = nmea_tx.clone();
+        tokio::spawn(async move {
+            if let Err(e) = outputs::tcp::run_tcp_server(addr, shutdown, tx).await {
+                eprintln!("TCP output server error: {}", e);
+            }
+        });
+    }
+
+    // Parse static UDP targets
+    let udp_targets: Vec<std::net::SocketAddr> = options
+        .udp_targets
+        .iter()
+        .map(|t| t.parse().expect("Invalid udp_targets address"))
+        .collect();
+
+    if options.serve_udp.is_some() || !udp_targets.is_empty() {
+        let addr: std::net::SocketAddr = options
+            .serve_udp
+            .as_deref()
+            .unwrap_or("0.0.0.0:0")
+            .parse()
+            .expect("Invalid serve_udp address");
+        let shutdown = shutdown_tx.subscribe();
+        let rx = nmea_tx.subscribe();
+        let targets = udp_targets;
+        tokio::spawn(async move {
+            if let Err(e) = outputs::udp::run_udp_server(addr, targets, shutdown, rx).await {
+                eprintln!("UDP output server error: {}", e);
+            }
+        });
+    }
+
+    if let Some(ref addr) = options.serve_ws {
+        let addr: std::net::SocketAddr = addr.parse().expect("Invalid serve_ws address");
+        let shutdown = shutdown_tx.subscribe();
+        let tx = nmea_tx.clone();
+        tokio::spawn(async move {
+            if let Err(e) = outputs::websocket::run_websocket_server(addr, shutdown, tx).await {
+                eprintln!("WebSocket output server error: {}", e);
+            }
+        });
+    }
+
+    let has_output_servers =
+        options.serve_tcp.is_some() || options.serve_udp.is_some() || options.serve_ws.is_some();
 
     let mut src_handles = vec![];
     for source in options.sources {
@@ -407,6 +491,22 @@ async fn main() -> Result<()> {
                     }
                 })
             }
+            sources::Address::Ws(ws_path) => {
+                let ws_clone = tx.clone();
+                tokio::spawn(async move {
+                    let source = WsSource::new(ws_clone, ws_path);
+                    tokio::select! {
+                        result = source.run() => {
+                            if let Err(e) = result {
+                                eprintln!("WebSocket source error: {}", e);
+                            }
+                        }
+                        _ = shutdown_rx.recv() => {
+                            // Silent shutdown
+                        }
+                    }
+                })
+            }
         };
         src_handles.push(handle);
     }
@@ -479,6 +579,15 @@ async fn main() -> Result<()> {
                 while let Some(mut message) = rx.recv().await {
                     let state_guard = state.lock().await;
                     sources::process_sentence(state_guard, &mut message).await;
+                    // Broadcast NMEA sentences to output servers
+                    if has_output_servers {
+                        for nmea in &message.nmea_sentences {
+                            let line = outputs::format_timestamped_nmea(
+                                message.timestamp, nmea,
+                            );
+                            let _ = nmea_tx.send(line);
+                        }
+                    }
                     if let Ok(json) = serde_json::to_string(&message) {
                         if let Some(file) = &mut file {
                             let _ = file.write_all(json.as_bytes()).await;
@@ -501,6 +610,13 @@ async fn main() -> Result<()> {
         while let Some(mut message) = rx.recv().await {
             let state_guard = state.lock().await;
             sources::process_sentence(state_guard, &mut message).await;
+            // Broadcast NMEA sentences to output servers
+            if has_output_servers {
+                for nmea in &message.nmea_sentences {
+                    let line = outputs::format_timestamped_nmea(message.timestamp, nmea);
+                    let _ = nmea_tx.send(line);
+                }
+            }
             if let Ok(json) = serde_json::to_string(&message) {
                 if options.verbose {
                     println!("{json}");

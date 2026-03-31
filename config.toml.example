@@ -86,16 +86,26 @@ tcp = "153.44.253.27:5631"
 
 # Example 11: TCP source with SSH tunnel (requires ssh feature)
 # [[sources]]
-# tcp = { host = "remote-ais-server.example.com", port = 5631, jump = "jumphost.example.com" }
+# tcp = { host = "remote-ais-server.example.com", port = 5631, jump = "jumphost" }
 
 # or more simply
 # tcp.host = "153.44.253.27"
 # tcp.port = 5631
 # tcp.jump = "jumphost"
 
+# --- WebSocket Source --
+
+# Example 12: WebSocket source
+# [[sources]]
+# ws = "ws://remote_host:88888"
+
+# Example 13: WebSocket source with SSH tunnel (requires ssh feature)
+# [[sources]]
+# ws = { url = "ws://remote_host:88888", jump = "jumphost" }
+
 # --- MQTT Source ---
 
-# Example 12: MQTT source (Finnish Digitraffic broker)
+# Example 14: MQTT source (Finnish Digitraffic broker)
 [[sources]]
 mqtt = "mqtt://mqtt.digitraffic.fi"
 
@@ -180,3 +190,21 @@ mqtt = "mqtt://mqtt.digitraffic.fi"
 #   tcp = { host = "remote-server", port = 5631, jump = "jumphost.example.com" }
 #
 # The 'jump' parameter refers to a hostname in your ~/.ssh/config or a direct hostname.
+
+# ========== OUTPUT SERVERS ==========
+#
+# Serve decoded AIS messages as timestamped NMEA (Norwegian coast guard format)
+# to connected clients via TCP, UDP, or WebSocket.
+#
+# This allows ship162 to act as a local AIS data source: decode from SDR
+# and re-broadcast to other tools as if they were connecting to the
+# Norwegian Coastal Administration feed.
+
+# TCP output server: clients connect and receive NMEA stream
+# serve_tcp = "0.0.0.0:5631"
+
+# UDP output server: clients register by sending any datagram, then receive NMEA
+# serve_udp = "0.0.0.0:5632"
+
+# WebSocket output server: clients connect via ws:// and receive NMEA messages
+# serve_ws = "0.0.0.0:88888"

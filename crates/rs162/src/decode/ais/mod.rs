@@ -374,6 +374,13 @@ impl Message {
         Ok(Message::from_reader_with_ctx(&mut reader, ())?)
     }
 
+    /// Decode a Message from assembled binary AIS data
+    pub fn from_nmea_binary(binary_data: &[u8]) -> Result<Message, Box<dyn std::error::Error>> {
+        let cursor = std::io::Cursor::new(binary_data);
+        let mut reader = Reader::new(cursor);
+        Ok(Message::from_reader_with_ctx(&mut reader, ())?)
+    }
+
     pub fn mmsi(&self) -> u32 {
         match self {
             Message::PositionReport1(msg) => msg.mmsi,
