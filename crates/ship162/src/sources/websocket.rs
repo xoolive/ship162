@@ -2,7 +2,7 @@ use anyhow::Result;
 use futures::StreamExt;
 use tokio::sync::mpsc::Sender;
 use tokio_tungstenite::connect_async;
-use tracing::info;
+use tracing::{debug, info, warn};
 
 use rs162::decode::nmea::{MessageAssembler, NmeaAisMessage};
 use rs162::prelude::Message;
@@ -42,8 +42,21 @@ impl WsSource {
 
         while let Some(msg) = read.next().await {
             let msg = msg?;
-            let text = match msg {
+
+            let text = match &msg {
                 tokio_tungstenite::tungstenite::Message::Text(t) => t.to_string(),
+                tokio_tungstenite::tungstenite::Message::Binary(b) => {
+                    match String::from_utf8(b.to_vec()) {
+                        Ok(s) => s,
+                        Err(_) => {
+                            debug!("WebSocket binary message ({} bytes), not UTF-8", b.len());
+                            continue;
+                        }
+                    }
+                }
+                tokio_tungstenite::tungstenite::Message::Ping(_)
+                | tokio_tungstenite::tungstenite::Message::Pong(_) => continue,
+                tokio_tungstenite::tungstenite::Message::Close(_) => break,
                 _ => continue,
             };
 
@@ -53,20 +66,32 @@ impl WsSource {
                     continue;
                 }
 
-                // Try timestamped format (\s:...\!AIVDM,...) then plain NMEA
+                debug!("WS recv: {}", &line[..line.len().min(120)]);
+
+                // Extract timestamp and NMEA sentence from various formats:
+                // 1. Timestamped: \s:123,c:1234567890*XX\!AIVDM,...
+                // 2. Plain NMEA: !AIVDM,...
+                // 3. Bare NMEA without !: AIVDM,...
                 let (timestamp, nmea_part) = if let Some(idx) = line.find("\\!") {
                     let ts = parse_timestamp_from_tag(line).unwrap_or_else(now);
                     let nmea = &line[idx + 1..];
                     (ts, nmea.to_string())
-                } else if line.starts_with('!') {
+                } else if line.starts_with('!')
+                    || line.starts_with("AIVDM")
+                    || line.starts_with("BSVDM")
+                {
                     (now(), line.to_string())
                 } else {
+                    debug!("WS skip: not NMEA");
                     continue;
                 };
 
                 let nmea_msg = match NmeaAisMessage::parse(&nmea_part) {
                     Ok(msg) => msg,
-                    Err(_) => continue,
+                    Err(e) => {
+                        debug!("WS NMEA parse error: {}", e);
+                        continue;
+                    }
                 };
 
                 if let Ok(Some(binary)) = assembler.add_fragment(nmea_msg) {
@@ -85,6 +110,7 @@ impl WsSource {
             }
         }
 
+        warn!("WebSocket stream ended");
         Ok(())
     }
 }
