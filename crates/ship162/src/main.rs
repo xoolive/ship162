@@ -24,6 +24,7 @@ use crate::sources::iq::Source;
 #[cfg(feature = "mqtt")]
 use crate::sources::mqtt::MqttSource;
 use crate::sources::tcp::TcpSource;
+use crate::sources::websocket::WsSource;
 use crate::tui::{Event, EventHandler};
 use rs162::sources::AisAsyncIqSource;
 
@@ -482,6 +483,22 @@ async fn main() -> Result<()> {
                         result = source.run() => {
                             if let Err(e) = result {
                                 eprintln!("IQ File source error: {}", e);
+                            }
+                        }
+                        _ = shutdown_rx.recv() => {
+                            // Silent shutdown
+                        }
+                    }
+                })
+            }
+            sources::Address::Ws(url) => {
+                let ws_clone = tx.clone();
+                tokio::spawn(async move {
+                    let source = WsSource::new(ws_clone, url);
+                    tokio::select! {
+                        result = source.run() => {
+                            if let Err(e) = result {
+                                eprintln!("WebSocket source error: {}", e);
                             }
                         }
                         _ = shutdown_rx.recv() => {

@@ -17,6 +17,7 @@ pub mod iq;
 #[cfg(feature = "mqtt")]
 pub mod mqtt;
 pub mod tcp;
+pub mod websocket;
 
 // AIS-specific constants for SDR devices
 #[cfg(any(feature = "rtlsdr", feature = "soapy"))]
@@ -124,6 +125,8 @@ pub enum Address {
     /// An Airspy device, e.g. `airspy://` or with structured config: `airspy = { device = 0 }`
     #[cfg(feature = "airspy")]
     Airspy(AirspyPath),
+    /// A WebSocket source (e.g. `ws://host:port/path`)
+    Ws(String),
     /// An IQ file source
     IqFile(String),
 }
@@ -288,6 +291,8 @@ impl FromStr for Source {
                     "Airspy support is not enabled. Compile with --features airspy".to_string(),
                 )
             }
+
+            "ws" | "wss" => Address::Ws(s.to_string()),
 
             "file" => {
                 let path = url
