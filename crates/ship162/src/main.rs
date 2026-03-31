@@ -86,7 +86,7 @@ struct Options {
     #[arg(long, value_name = "ADDR")]
     serve_ws: Option<String>,
 
-    /// Static UDP targets to send NMEA to (e.g., 51.158.72.24:45678)
+    /// Static UDP targets to send NMEA to (e.g., feedme.mode-s.org:88888)
     #[arg(long, value_name = "ADDR")]
     #[serde(default)]
     udp_targets: Vec<String>,
@@ -491,10 +491,10 @@ async fn main() -> Result<()> {
                     }
                 })
             }
-            sources::Address::Ws(url) => {
+            sources::Address::Ws(ws_path) => {
                 let ws_clone = tx.clone();
                 tokio::spawn(async move {
-                    let source = WsSource::new(ws_clone, url);
+                    let source = WsSource::new(ws_clone, ws_path);
                     tokio::select! {
                         result = source.run() => {
                             if let Err(e) = result {

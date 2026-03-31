@@ -7,16 +7,16 @@ use tracing::{debug, info, warn};
 use rs162::decode::nmea::{MessageAssembler, NmeaAisMessage};
 use rs162::prelude::Message;
 
-use crate::sources::TimedMessage;
+use crate::sources::{TimedMessage, WsPath};
 
 pub struct WsSource {
     tx: Sender<TimedMessage>,
-    url: String,
+    path: WsPath,
 }
 
 impl WsSource {
-    pub fn new(tx: Sender<TimedMessage>, url: String) -> Self {
-        Self { tx, url }
+    pub fn new(tx: Sender<TimedMessage>, path: WsPath) -> Self {
+        Self { tx, path }
     }
 
     pub async fn run(&self) -> Result<()> {
@@ -34,10 +34,81 @@ impl WsSource {
     }
 
     async fn connect_and_process(&self) -> Result<()> {
-        let (ws_stream, _) = connect_async(&self.url).await?;
-        info!("Connected to WebSocket: {}", self.url);
+        match &self.path {
+            WsPath::Short(url) => {
+                let (ws_stream, _) = connect_async(url.as_str()).await?;
+                info!("Connected to WebSocket: {}", url);
+                let (_write, read) = ws_stream.split();
+                self.process_stream(read).await
+            }
+            WsPath::Long(ws) => {
+                #[cfg(feature = "ssh")]
+                if let Some(jump) = &ws.jump {
+                    return self.connect_tunnelled(&ws.url, jump).await;
+                }
+                let (ws_stream, _) = connect_async(ws.url.as_str()).await?;
+                info!("Connected to WebSocket: {}", ws.url);
+                let (_write, read) = ws_stream.split();
+                self.process_stream(read).await
+            }
+        }
+    }
 
-        let (_write, mut read) = ws_stream.split();
+    #[cfg(feature = "ssh")]
+    async fn connect_tunnelled(&self, url: &str, jump: &str) -> Result<()> {
+        use rs162::sources::ssh::TunnelledWebsocket;
+        use tokio_tungstenite::client_async;
+        use tokio_tungstenite::tungstenite::handshake::client::Request;
+        use url::Url;
+
+        let parsed_url = Url::parse(url)?;
+        let host = parsed_url.host_str().unwrap_or("localhost").to_owned();
+        let port = parsed_url.port_or_known_default().unwrap_or(80);
+
+        let tunnelled = TunnelledWebsocket {
+            address: host,
+            port,
+            url: url.to_owned(),
+            jump: jump.to_owned(),
+        };
+
+        let stream = tunnelled
+            .connect()
+            .await
+            .map_err(|e| anyhow::anyhow!("{}", e))?;
+        info!("SSH tunnel established to {} via jump host {}", url, jump);
+
+        let request = Request::builder()
+            .uri(url)
+            .header("Host", parsed_url.host_str().unwrap_or("localhost"))
+            .header("Connection", "Upgrade")
+            .header("Upgrade", "websocket")
+            .header("Sec-WebSocket-Version", "13")
+            .header(
+                "Sec-WebSocket-Key",
+                tokio_tungstenite::tungstenite::handshake::client::generate_key(),
+            )
+            .body(())
+            .map_err(|e| anyhow::anyhow!("{}", e))?;
+
+        let (ws_stream, _) = client_async(request, stream)
+            .await
+            .map_err(|e| anyhow::anyhow!("{}", e))?;
+        info!("Connected to WebSocket via tunnel: {}", url);
+
+        let (_write, read) = ws_stream.split();
+        self.process_stream(read).await
+    }
+
+    async fn process_stream<S>(&self, mut read: S) -> Result<()>
+    where
+        S: futures::Stream<
+                Item = Result<
+                    tokio_tungstenite::tungstenite::Message,
+                    tokio_tungstenite::tungstenite::Error,
+                >,
+            > + Unpin,
+    {
         let mut assembler = MessageAssembler::new();
 
         while let Some(msg) = read.next().await {
