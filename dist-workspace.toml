@@ -12,7 +12,14 @@ installers = ["shell", "homebrew"]
 # A GitHub repo to push Homebrew formulas to
 tap = "xoolive/homebrew-homebrew"
 # Target platforms to build apps for (Rust target-triple syntax)
-targets = ["aarch64-apple-darwin", "aarch64-unknown-linux-gnu", "x86_64-apple-darwin", "x86_64-unknown-linux-gnu"]
+targets = [
+    "aarch64-apple-darwin",
+    "aarch64-unknown-linux-gnu",
+    "x86_64-apple-darwin",
+    "x86_64-unknown-linux-gnu",
+    "x86_64-unknown-linux-musl",
+    "x86_64-pc-windows-msvc",
+]
 # Which actions to run on pull requests
 pr-run-mode = "upload"
 # Path that installers should place binaries in
@@ -22,13 +29,20 @@ publish-jobs = ["homebrew"]
 # Whether to install an updater program
 install-updater = true
 # Features to pass to cargo build
-features = ["mqtt", "rtlsdr", "ssh"]
+# Note: rtlsdr and soapy are excluded because they require system
+# libraries (libusb) that are not available on all platforms.
+# Users with SDR hardware should build from source with --features rtlsdr.
+features = ["ssh"]
 
 [dist.dependencies.apt]
-libusb-dev = "*"
+libssl-dev = "*"
+pkg-config = "*"
 
 [dist.dependencies.homebrew]
-libusb = { stage = ["build", "run"] }
+openssl = { stage = ["build", "run"] }
+
+[dist.dependencies.chocolatey]
+openssl = "*"
 
 [dist.github-custom-runners]
 global = "ubuntu-latest"
