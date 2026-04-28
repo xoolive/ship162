@@ -28,7 +28,10 @@ publish-jobs = ["homebrew"]
 # Whether to install an updater program
 install-updater = true
 # Features to pass to cargo build
-features = ["mqtt", "rtlsdr", "airspy", "hackrf", "ssh"]
+# mqtt is excluded: paho-mqtt-sys requires cmake + OpenSSL (C build deps) and would
+# break Windows and clean Linux/macOS runners. Users who want MQTT build from source
+# with --features mqtt.
+features = ["rtlsdr", "airspy", "hackrf", "ssh"]
 
 [dist.github-custom-runners]
 global = "ubuntu-latest"

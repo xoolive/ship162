@@ -19,18 +19,18 @@ jobs:
           fetch-depth: 1
 
       - name: Code linting
-        run: cargo clippy --workspace --features "rtlsdr,airspy,hackrf,ssh,mqtt" --all-targets -- -D warnings
+        run: cargo clippy --workspace --features "rtlsdr,airspy,hackrf,ssh" --all-targets -- -D warnings
 
       - name: Code formatting
         run: cargo fmt --all --check
 
       - name: Build
-        run: cargo build --verbose --features "rtlsdr,airspy,hackrf,ssh,mqtt"
+        run: cargo build --verbose --features "rtlsdr,airspy,hackrf,ssh"
 
       - name: Run tests
-        run: cargo test --workspace --features "rtlsdr,airspy,hackrf,ssh,mqtt"
+        run: cargo test --workspace --features "rtlsdr,airspy,hackrf,ssh"
 
       - name: Check docs
         env:
           RUSTDOCFLAGS: "-D rustdoc::all -A rustdoc::private-doc-tests"
-        run: cargo doc --features "rtlsdr,airspy,hackrf,ssh,mqtt" --no-deps
+        run: cargo doc --features "rtlsdr,airspy,hackrf,ssh" --no-deps
