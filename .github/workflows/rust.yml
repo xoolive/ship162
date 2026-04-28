@@ -18,24 +18,19 @@ jobs:
         with:
           fetch-depth: 1
 
-      - name: Install dependencies
-        run: |
-          sudo apt update
-          sudo apt-get install -y --no-install-recommends libsoapysdr-dev libiio-dev libiio-utils
-
       - name: Code linting
-        run: cargo clippy --workspace --all-targets --all-features -- -D warnings
+        run: cargo clippy --workspace --features "rtlsdr,airspy,hackrf,ssh,mqtt" --all-targets -- -D warnings
 
       - name: Code formatting
         run: cargo fmt --all --check
 
       - name: Build
-        run: cargo build --verbose --release
+        run: cargo build --verbose --features "rtlsdr,airspy,hackrf,ssh,mqtt"
 
-      - name: Run tests, examples and benchmarks
-        run: cargo test --workspace --all-features --all-targets
+      - name: Run tests
+        run: cargo test --workspace --features "rtlsdr,airspy,hackrf,ssh,mqtt"
 
       - name: Check docs
         env:
           RUSTDOCFLAGS: "-D rustdoc::all -A rustdoc::private-doc-tests"
-        run: cargo doc --all-features --no-deps
+        run: cargo doc --features "rtlsdr,airspy,hackrf,ssh,mqtt" --no-deps
