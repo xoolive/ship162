@@ -9,8 +9,15 @@ mod tui;
 use anyhow::Result;
 use clap::Parser;
 use crossterm::event::{KeyCode, KeyModifiers};
-#[cfg(any(feature = "rtlsdr", feature = "soapy", feature = "airspy"))]
+#[cfg(any(
+    feature = "rtlsdr",
+    feature = "soapy",
+    feature = "airspy",
+    feature = "hackrf"
+))]
 use desperado::Gain;
+#[cfg(feature = "hackrf")]
+use desperado::{GainElement, GainElementName};
 use redis::AsyncCommands;
 use rs162::dsp::ais::AIS_SAMPLE_RATE_288K;
 use serde::Deserialize;
@@ -381,8 +388,11 @@ async fn main() -> Result<()> {
                     DeviceSelector::Index(0)
                 };
 
-                // Get sample rate from config or use default 288 kHz
-                let sample_rate = config.sample_rate.unwrap_or(AIS_SAMPLE_RATE_288K);
+                // Get sample rate from source config or use default 288 kHz
+                let sample_rate = source
+                    .sample_rate
+                    .map(|r| r as u32)
+                    .unwrap_or(AIS_SAMPLE_RATE_288K);
                 let ais_source =
                     AisAsyncIqSource::from_rtlsdr(device, sample_rate, gain, bias_tee).await?;
                 tokio::spawn(async move {
@@ -402,7 +412,7 @@ async fn main() -> Result<()> {
             #[cfg(feature = "soapy")]
             sources::Address::Soapy(soapy_path) => {
                 let soapy_clone = tx.clone();
-                let args = soapy_path.args.clone();
+                let args = soapy_path.soapy.clone();
 
                 // Get configuration from source or use defaults
                 let gain = source
@@ -410,7 +420,10 @@ async fn main() -> Result<()> {
                     .unwrap_or(Gain::Manual(sources::AIS_RTLSDR_GAIN));
                 let bias_tee = source.bias_tee.unwrap_or(false);
                 // Use specified sample rate or default to 288 kHz
-                let sample_rate = soapy_path.sample_rate.unwrap_or(AIS_SAMPLE_RATE_288K);
+                let sample_rate = source
+                    .sample_rate
+                    .map(|r| r as u32)
+                    .unwrap_or(AIS_SAMPLE_RATE_288K);
 
                 let ais_source =
                     AisAsyncIqSource::from_soapy(&args, sample_rate, gain, bias_tee).await?;
@@ -449,18 +462,101 @@ async fn main() -> Result<()> {
                     AirspyDeviceSelector::Index(0)
                 };
 
-                let gain = source.gain.unwrap_or(Gain::Auto);
+                // Default: sensitivity gain 50 (0-100 percentage for Airspy sensitivity table)
+                let gain = source.gain.clone().unwrap_or(Gain::Manual(50.0));
                 let bias_tee = source.bias_tee.unwrap_or(false);
-                let sample_rate = config.sample_rate.unwrap_or(6_000_000);
+                let sample_rate = source.sample_rate.map(|r| r as u32).unwrap_or(6_000_000);
+                let lna_gain = config.lna_gain;
+                let mixer_gain = config.mixer_gain;
+                let vga_gain = config.vga_gain;
 
-                let ais_source =
-                    AisAsyncIqSource::from_airspy(device, sample_rate, gain, bias_tee).await?;
+                let ais_source = AisAsyncIqSource::from_airspy(
+                    device,
+                    sample_rate,
+                    gain,
+                    bias_tee,
+                    lna_gain,
+                    mixer_gain,
+                    vga_gain,
+                )
+                .await?;
                 tokio::spawn(async move {
                     let mut source = Source::new(airspy_clone, ais_source);
                     tokio::select! {
                         result = source.run() => {
                             if let Err(e) = result {
                                 eprintln!("Airspy source error: {}", e);
+                            }
+                        }
+                        _ = shutdown_rx.recv() => {
+                            // Silent shutdown
+                        }
+                    }
+                })
+            }
+            #[cfg(feature = "hackrf")]
+            sources::Address::Hackrf(hackrf_path) => {
+                let hackrf_clone = tx.clone();
+
+                let config = &hackrf_path.config;
+                let device_index = config.device.unwrap_or(0);
+                let amp_enable = config.amp_enable.unwrap_or(true);
+                let lna_gain = config.lna_gain;
+                let vga_gain = config.vga_gain;
+
+                // Three-way gain priority (mirrors jet1090):
+                //   1. Per-element gains in hackrf = { lna_gain, vga_gain } override everything
+                //   2. Source-level `gain` is used as-is
+                //   3. Default: LNA=40 dB, VGA=55 dB
+                let gain = if lna_gain.is_some() || vga_gain.is_some() {
+                    let mut elements = Vec::new();
+                    if let Some(lna) = lna_gain {
+                        elements.push(GainElement {
+                            name: GainElementName::Lna,
+                            value_db: lna as f64,
+                        });
+                    }
+                    if let Some(vga) = vga_gain {
+                        elements.push(GainElement {
+                            name: GainElementName::Vga,
+                            value_db: vga as f64,
+                        });
+                    }
+                    Gain::Elements(elements)
+                } else if let Some(g) = source.gain.clone() {
+                    g
+                } else {
+                    Gain::Elements(vec![
+                        GainElement {
+                            name: GainElementName::Lna,
+                            value_db: 40.0,
+                        },
+                        GainElement {
+                            name: GainElementName::Vga,
+                            value_db: 55.0,
+                        },
+                    ])
+                };
+                let bias_tee = source.bias_tee.unwrap_or(false);
+                let sample_rate = source
+                    .sample_rate
+                    .map(|r| r as u32)
+                    .unwrap_or(AIS_SAMPLE_RATE_288K);
+
+                let ais_source = AisAsyncIqSource::from_hackrf(
+                    device_index,
+                    sample_rate,
+                    gain,
+                    amp_enable,
+                    bias_tee,
+                )
+                .await?;
+                tokio::spawn(async move {
+                    let mut source = Source::new(hackrf_clone, ais_source);
+                    tokio::select! {
+                        result = source.run() => {
+                            if let Err(e) = result {
+                                eprintln!("HackRF source error: {}", e);
                             }
                         }
                         _ = shutdown_rx.recv() => {

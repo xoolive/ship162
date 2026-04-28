@@ -316,6 +316,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "biquad"
+version = "0.5.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8580925877eb35ab50f987a1c2c193eb46000c8827c871bc3425070f086408cc"
+dependencies = [
+ "num-traits",
+]
+
+[[package]]
 name = "bit-set"
 version = "0.5.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -618,6 +627,22 @@ checksum = "633458d4ef8c78b72454de2d54fd6ab2e60f9e02be22f3c6104cdc8a4e0fceb9"
 dependencies = [
  "unicode-segmentation",
 ]
+
+[[package]]
+name = "core-foundation"
+version = "0.10.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b2a6cd9ae233e7f62ba4e9353e81a88df7fc8a5987b8d445b4d90c879bd156f6"
+dependencies = [
+ "core-foundation-sys",
+ "libc",
+]
+
+[[package]]
+name = "core-foundation-sys"
+version = "0.8.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "773648b94d0e5d620f64f280777445740e61fe701025087ec8b57f45c791888b"
 
 [[package]]
 name = "cpufeatures"
@@ -967,16 +992,17 @@ dependencies = [
 
 [[package]]
 name = "desperado"
-version = "0.3.0"
+version = "0.4.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0bbf5e41c66e70f995ceb7b59fed2d9bc621ecf93633fb687033ba10046f153a"
+checksum = "691720d69766cea4a1da208c1958a641fc589fdb7f93ec035b0b11c7caca43e2"
 dependencies = [
+ "biquad",
  "dirs",
  "futures",
  "num-complex",
+ "rs-hackrf",
+ "rs-rtl",
  "rs-spy",
- "rtl-sdr-rs",
- "rusb",
  "serde",
  "soapysdr",
  "tokio",
@@ -1710,6 +1736,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "io-kit-sys"
+version = "0.5.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "06d3a048d09fbb6597dbf7c69f40d14df4a49487db1487191618c893fc3b1c26"
+dependencies = [
+ "core-foundation-sys",
+ "mach2",
+]
+
+[[package]]
 name = "is_terminal_polyfill"
 version = "1.70.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1949,6 +1985,15 @@ checksum = "c0aeb26bf5e836cc1c341c8106051b573f1766dfa05aa87f0b98be5e51b02303"
 dependencies = [
  "nix",
  "winapi",
+]
+
+[[package]]
+name = "mach2"
+version = "0.5.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6a1b95cd5421ec55b445b5ae102f5ea0e768de1f82bd3001e11f426c269c3aea"
+dependencies = [
+ "libc",
 ]
 
 [[package]]
@@ -2205,6 +2250,24 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5c7398b9c8b70908f6371f47ed36737907c87c52af34c268fed0bf0ceb92ead9"
 dependencies = [
  "libc",
+]
+
+[[package]]
+name = "nusb"
+version = "0.2.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8a330b3bc7f8b4fc729a4c63164b3927eeeaced198222a3ce6b8b6e034851b7a"
+dependencies = [
+ "core-foundation",
+ "core-foundation-sys",
+ "futures-core",
+ "io-kit-sys",
+ "linux-raw-sys",
+ "log",
+ "once_cell",
+ "rustix",
+ "slab",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -2979,14 +3042,36 @@ dependencies = [
 ]
 
 [[package]]
-name = "rs-spy"
-version = "0.3.0"
+name = "rs-hackrf"
+version = "0.4.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d1297344eba07f6960c7bed48331beda82874c6153d8d5559b1aae9be48f651a"
+checksum = "82209056a8f82530e812bad7c5e6c4e39f4751ce0b6a6b2b2c306b6b04489670"
+dependencies = [
+ "nusb",
+ "thiserror 2.0.18",
+ "tracing",
+]
+
+[[package]]
+name = "rs-rtl"
+version = "0.4.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "be84df73cb8ac7ca491a77ee8fee322da3e9e75b0b05adfe7e56f7dcee53537c"
+dependencies = [
+ "nusb",
+ "thiserror 2.0.18",
+ "tracing",
+]
+
+[[package]]
+name = "rs-spy"
+version = "0.4.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "fcf6d6d437bef2d48c1a65abaae77621905d68ea7ef5809a7ac2a1be881feee4"
 dependencies = [
  "num-complex",
- "rusb",
- "thiserror 1.0.69",
+ "nusb",
+ "thiserror 2.0.18",
  "tracing",
 ]
 

@@ -11,15 +11,17 @@ use std::pin::Pin;
 use std::task::{Context, Poll};
 use tokio::sync::mpsc;
 
-#[cfg(any(feature = "rtlsdr", feature = "soapy"))]
+#[cfg(any(feature = "rtlsdr", feature = "soapy", feature = "hackrf"))]
 use desperado::DeviceConfig;
 #[cfg(any(feature = "rtlsdr", feature = "soapy", feature = "airspy"))]
 use desperado::Gain;
 
 #[cfg(feature = "airspy")]
 use desperado::airspy::{
-    AirspyConfig, AsyncAirspySdrReader, DeviceSelector as AirspyDeviceSelector,
+    AirspyConfig, AirspyGainMode, AsyncAirspySdrReader, DeviceSelector as AirspyDeviceSelector,
 };
+#[cfg(feature = "hackrf")]
+use desperado::hackrf::HackRfConfig;
 #[cfg(feature = "rtlsdr")]
 use desperado::rtlsdr::{DeviceSelector, RtlSdrConfig};
 #[cfg(feature = "soapy")]
@@ -92,6 +94,7 @@ impl AisIqSource {
             sample_rate,
             gain: gain.map(Gain::Manual).unwrap_or(Gain::Manual(RTLSDR_GAIN)),
             bias_tee,
+            freq_correction_ppm: 0,
         };
         let config = DeviceConfig::RtlSdr(rtlsdr_config);
         Self::from_device_config(config, sample_rate)
@@ -217,7 +220,7 @@ impl AisAsyncIqSource {
     }
 
     /// Create an async AIS IQ source from a DeviceConfig for SDR devices
-    #[cfg(any(feature = "rtlsdr", feature = "soapy"))]
+    #[cfg(any(feature = "rtlsdr", feature = "soapy", feature = "hackrf"))]
     pub fn from_device_config(
         config: DeviceConfig,
         sample_rate: u32,
@@ -243,6 +246,7 @@ impl AisAsyncIqSource {
             sample_rate,
             gain,
             bias_tee,
+            freq_correction_ppm: 0,
         };
         let config = DeviceConfig::RtlSdr(rtlsdr_config);
         Self::from_device_config(config, sample_rate)
@@ -273,6 +277,9 @@ impl AisAsyncIqSource {
         sample_rate: u32,
         gain: Gain,
         bias_tee: bool,
+        lna_gain: Option<u8>,
+        mixer_gain: Option<u8>,
+        vga_gain: Option<u8>,
     ) -> impl std::future::Future<Output = Result<AisAsyncIqSource>> {
         let airspy_config = AirspyConfig {
             device,
@@ -281,9 +288,10 @@ impl AisAsyncIqSource {
             gain,
             bias_tee,
             packing: false,
-            lna_gain: None,
-            mixer_gain: None,
-            vga_gain: None,
+            lna_gain,
+            mixer_gain,
+            vga_gain,
+            gain_mode: AirspyGainMode::default(),
         };
         let (tx, rx) = mpsc::channel::<Result<AisDemodulatedMessage>>(32);
         async move {
@@ -291,6 +299,26 @@ impl AisAsyncIqSource {
             let handle = spawn_demodulator_task(source, tx, sample_rate);
             Ok(AisAsyncIqSource { handle, rx })
         }
+    }
+
+    #[cfg(feature = "hackrf")]
+    pub fn from_hackrf(
+        device_index: usize,
+        sample_rate: u32,
+        gain: Gain,
+        amp_enable: bool,
+        bias_tee: bool,
+    ) -> impl std::future::Future<Output = Result<AisAsyncIqSource>> {
+        let hackrf_config = HackRfConfig {
+            device_index,
+            center_freq: AIS_FREQ as u64,
+            sample_rate,
+            gain,
+            amp_enable,
+            bias_tee,
+        };
+        let config = DeviceConfig::HackRf(hackrf_config);
+        Self::from_device_config(config, sample_rate)
     }
 }
 

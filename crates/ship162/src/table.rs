@@ -23,7 +23,7 @@ pub fn render(frame: &mut Frame, state: &AppState) {
 
 fn render_table(frame: &mut Frame, area: Rect, state: &AppState) {
     let mut vessels = state.get_vessels();
-    vessels.sort_by(|a, b| a.count.cmp(&b.count));
+    vessels.sort_by_key(|a| a.count);
     vessels.reverse();
     let colors = TableColors::new(&tailwind::CYAN);
 

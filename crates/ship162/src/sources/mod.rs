@@ -76,23 +76,15 @@ pub struct RtlSdrDeviceConfig {
     /// Product filter
     #[serde(skip_serializing_if = "Option::is_none")]
     pub product: Option<String>,
-    /// Optional sample rate in Hz (e.g., 1536000 for 1.536 MS/s)
-    /// If not specified, defaults to 288 kHz
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub sample_rate: Option<u32>,
 }
 
-/// Helper struct for deserializing SoapySDR configuration from TOML
+/// SoapySDR device configuration for TOML (transparent string)
 #[cfg(feature = "soapy")]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
+#[serde(transparent)]
 pub struct SoapyPath {
-    /// SoapySDR driver arguments (e.g., "driver=rtlsdr" or "driver=airspy")
-    pub args: String,
-    /// Optional sample rate in Hz (e.g., 3000000 for Airspy Mini at 3 MS/s)
-    /// If not specified, defaults to 288 kHz
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub sample_rate: Option<u32>,
+    /// SoapySDR driver arguments (e.g., "driver=rtlsdr")
+    pub soapy: String,
 }
 
 /// Structured Airspy device configuration for TOML
@@ -115,10 +107,43 @@ pub struct AirspyDeviceConfig {
     /// Serial number selector (e.g. "0x35AC63DC2D8C7A4F")
     #[serde(skip_serializing_if = "Option::is_none")]
     pub serial: Option<String>,
-    /// Optional sample rate in Hz (e.g., 3000000 for Airspy Mini)
-    /// If not specified, defaults to 6 MS/s
+    /// LNA gain (0-14); use instead of source-level `gain` for fine control
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub sample_rate: Option<u32>,
+    pub lna_gain: Option<u8>,
+    /// Mixer gain (0-15); use instead of source-level `gain` for fine control
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub mixer_gain: Option<u8>,
+    /// VGA gain (0-15); use instead of source-level `gain` for fine control
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub vga_gain: Option<u8>,
+}
+
+/// Structured HackRF device configuration for TOML
+#[cfg(feature = "hackrf")]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct HackrfPath {
+    #[serde(flatten)]
+    pub config: HackrfDeviceConfig,
+}
+
+/// HackRF device configuration fields
+#[cfg(feature = "hackrf")]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct HackrfDeviceConfig {
+    /// Device index (0, 1, 2, ...)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub device: Option<usize>,
+    /// Enable RF amplifier (+14 dB before LNA, default: true)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub amp_enable: Option<bool>,
+    /// LNA gain in dB (0-40, 8 dB steps); use instead of source-level `gain`
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub lna_gain: Option<u32>,
+    /// VGA gain in dB (0-62, 2 dB steps); use instead of source-level `gain`
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub vga_gain: Option<u32>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -132,12 +157,15 @@ pub enum Address {
     /// An RTL-SDR device, e.g. `rtlsdr://` or with structured config: `rtlsdr = { device = 0 }`
     #[cfg(feature = "rtlsdr")]
     Rtlsdr(RtlSdrPath),
-    /// A SoapySDR device, e.g. `soapy://driver=rtlsdr` or with structured config: `soapy = "driver=rtlsdr"`
+    /// A SoapySDR device, e.g. `soapy = "driver=rtlsdr"`
     #[cfg(feature = "soapy")]
     Soapy(SoapyPath),
     /// An Airspy device, e.g. `airspy://` or with structured config: `airspy = { device = 0 }`
     #[cfg(feature = "airspy")]
     Airspy(AirspyPath),
+    /// A HackRF device, e.g. `hackrf://` or with structured config: `hackrf = { device = 0 }`
+    #[cfg(feature = "hackrf")]
+    Hackrf(HackrfPath),
     /// A WebSocket source (e.g. `ws://host:port/path` or `{ url = "ws://...", jump = "host" }`)
     Ws(WsPath),
     /// An IQ file source
@@ -155,12 +183,28 @@ pub struct Source {
     #[serde(flatten)]
     pub address: Address,
     /// Gain setting for SDR devices (RTL-SDR/Soapy default: 49.6, Airspy default: auto)
-    #[cfg(any(feature = "rtlsdr", feature = "soapy", feature = "airspy"))]
+    #[cfg(any(
+        feature = "rtlsdr",
+        feature = "soapy",
+        feature = "airspy",
+        feature = "hackrf"
+    ))]
     pub gain: Option<Gain>,
-    #[cfg(any(feature = "rtlsdr", feature = "soapy", feature = "airspy"))]
+    /// Sample rate in Hz (default depends on device)
+    #[cfg(any(
+        feature = "rtlsdr",
+        feature = "soapy",
+        feature = "airspy",
+        feature = "hackrf"
+    ))]
     pub sample_rate: Option<f64>,
-    /// Enable bias-tee to power external LNA (RTL-SDR/SoapySDR/Airspy, default: false)
-    #[cfg(any(feature = "rtlsdr", feature = "soapy", feature = "airspy"))]
+    /// Enable bias-tee to power external LNA (RTL-SDR/SoapySDR/Airspy/HackRF, default: false)
+    #[cfg(any(
+        feature = "rtlsdr",
+        feature = "soapy",
+        feature = "airspy",
+        feature = "hackrf"
+    ))]
     pub bias_tee: Option<bool>,
 }
 
@@ -175,23 +219,82 @@ impl<'de> Deserialize<'de> for Source {
         struct SourceHelper {
             #[serde(flatten)]
             address: Address,
-            #[cfg(any(feature = "rtlsdr", feature = "soapy", feature = "airspy"))]
+            #[cfg(any(
+                feature = "rtlsdr",
+                feature = "soapy",
+                feature = "airspy",
+                feature = "hackrf"
+            ))]
             gain: Option<Gain>,
-            #[cfg(any(feature = "rtlsdr", feature = "soapy", feature = "airspy"))]
+            #[cfg(any(
+                feature = "rtlsdr",
+                feature = "soapy",
+                feature = "airspy",
+                feature = "hackrf"
+            ))]
             sample_rate: Option<f64>,
-            #[cfg(any(feature = "rtlsdr", feature = "soapy", feature = "airspy"))]
+            #[cfg(any(
+                feature = "rtlsdr",
+                feature = "soapy",
+                feature = "airspy",
+                feature = "hackrf"
+            ))]
             bias_tee: Option<bool>,
         }
 
         let helper = SourceHelper::deserialize(deserializer)?;
 
+        // Validate that source-level gain and per-element device gains are not mixed
+        #[cfg(feature = "airspy")]
+        if helper.gain.is_some() {
+            if let Address::Airspy(ref path) = helper.address {
+                if path.config.lna_gain.is_some()
+                    || path.config.mixer_gain.is_some()
+                    || path.config.vga_gain.is_some()
+                {
+                    return Err(serde::de::Error::custom(
+                        "Cannot specify both `gain` (source level) and per-element gains \
+                         (`lna_gain`, `mixer_gain`, `vga_gain`) inside `airspy = { ... }`. \
+                         Use one or the other.",
+                    ));
+                }
+            }
+        }
+        #[cfg(feature = "hackrf")]
+        if helper.gain.is_some() {
+            if let Address::Hackrf(ref path) = helper.address {
+                if path.config.lna_gain.is_some() || path.config.vga_gain.is_some() {
+                    return Err(serde::de::Error::custom(
+                        "Cannot specify both `gain` (source level) and per-element gains \
+                         (`lna_gain`, `vga_gain`) inside `hackrf = { ... }`. \
+                         Use one or the other.",
+                    ));
+                }
+            }
+        }
+
         Ok(Source {
             address: helper.address,
-            #[cfg(any(feature = "rtlsdr", feature = "soapy", feature = "airspy"))]
+            #[cfg(any(
+                feature = "rtlsdr",
+                feature = "soapy",
+                feature = "airspy",
+                feature = "hackrf"
+            ))]
             gain: helper.gain,
-            #[cfg(any(feature = "rtlsdr", feature = "soapy", feature = "airspy"))]
+            #[cfg(any(
+                feature = "rtlsdr",
+                feature = "soapy",
+                feature = "airspy",
+                feature = "hackrf"
+            ))]
             sample_rate: helper.sample_rate,
-            #[cfg(any(feature = "rtlsdr", feature = "soapy", feature = "airspy"))]
+            #[cfg(any(
+                feature = "rtlsdr",
+                feature = "soapy",
+                feature = "airspy",
+                feature = "hackrf"
+            ))]
             bias_tee: helper.bias_tee,
         })
     }
@@ -238,7 +341,6 @@ impl FromStr for Source {
                     serial: None,
                     manufacturer: None,
                     product: None,
-                    sample_rate: None,
                 };
                 Address::Rtlsdr(RtlSdrPath { config })
             }
@@ -251,10 +353,7 @@ impl FromStr for Source {
             #[cfg(feature = "soapy")]
             "soapy" => {
                 let args = url.host_str().unwrap_or("driver=rtlsdr").to_string();
-                Address::Soapy(SoapyPath {
-                    args,
-                    sample_rate: None,
-                })
+                Address::Soapy(SoapyPath { soapy: args })
             }
             #[cfg(feature = "airspy")]
             "airspy" => {
@@ -263,19 +362,25 @@ impl FromStr for Source {
                     AirspyDeviceConfig {
                         device: Some(0),
                         serial: None,
-                        sample_rate: None,
+                        lna_gain: None,
+                        mixer_gain: None,
+                        vga_gain: None,
                     }
                 } else if let Ok(idx) = device_str.parse::<usize>() {
                     AirspyDeviceConfig {
                         device: Some(idx),
                         serial: None,
-                        sample_rate: None,
+                        lna_gain: None,
+                        mixer_gain: None,
+                        vga_gain: None,
                     }
                 } else if let Some(serial) = device_str.strip_prefix("serial=") {
                     AirspyDeviceConfig {
                         device: None,
                         serial: Some(serial.to_string()),
-                        sample_rate: None,
+                        lna_gain: None,
+                        mixer_gain: None,
+                        vga_gain: None,
                     }
                 } else {
                     eprintln!(
@@ -287,10 +392,46 @@ impl FromStr for Source {
                     AirspyDeviceConfig {
                         device: Some(0),
                         serial: None,
-                        sample_rate: None,
+                        lna_gain: None,
+                        mixer_gain: None,
+                        vga_gain: None,
                     }
                 };
                 Address::Airspy(AirspyPath { config })
+            }
+
+            #[cfg(feature = "hackrf")]
+            "hackrf" => {
+                let device_str = url.host_str().unwrap_or("");
+                let config = if device_str.is_empty() {
+                    HackrfDeviceConfig {
+                        device: Some(0),
+                        amp_enable: None,
+                        lna_gain: None,
+                        vga_gain: None,
+                    }
+                } else if let Ok(idx) = device_str.parse::<usize>() {
+                    HackrfDeviceConfig {
+                        device: Some(idx),
+                        amp_enable: None,
+                        lna_gain: None,
+                        vga_gain: None,
+                    }
+                } else {
+                    eprintln!(
+                        "WARNING: Unrecognized HackRF device format: '{}'\n\
+                         Expected device index (0, 1, 2, ...).\n\
+                         Defaulting to device 0.",
+                        device_str
+                    );
+                    HackrfDeviceConfig {
+                        device: Some(0),
+                        amp_enable: None,
+                        lna_gain: None,
+                        vga_gain: None,
+                    }
+                };
+                Address::Hackrf(HackrfPath { config })
             }
             #[cfg(not(feature = "soapy"))]
             "soapy" => {
@@ -302,6 +443,12 @@ impl FromStr for Source {
             "airspy" => {
                 return Err(
                     "Airspy support is not enabled. Compile with --features airspy".to_string(),
+                )
+            }
+            #[cfg(not(feature = "hackrf"))]
+            "hackrf" => {
+                return Err(
+                    "HackRF support is not enabled. Compile with --features hackrf".to_string(),
                 )
             }
 
@@ -321,11 +468,26 @@ impl FromStr for Source {
 
         let source = Source {
             address,
-            #[cfg(any(feature = "rtlsdr", feature = "soapy", feature = "airspy"))]
+            #[cfg(any(
+                feature = "rtlsdr",
+                feature = "soapy",
+                feature = "airspy",
+                feature = "hackrf"
+            ))]
             gain: None,
-            #[cfg(any(feature = "rtlsdr", feature = "soapy", feature = "airspy"))]
+            #[cfg(any(
+                feature = "rtlsdr",
+                feature = "soapy",
+                feature = "airspy",
+                feature = "hackrf"
+            ))]
             sample_rate: None,
-            #[cfg(any(feature = "rtlsdr", feature = "soapy", feature = "airspy"))]
+            #[cfg(any(
+                feature = "rtlsdr",
+                feature = "soapy",
+                feature = "airspy",
+                feature = "hackrf"
+            ))]
             bias_tee: None,
         };
 
@@ -534,18 +696,33 @@ mod tests {
     }
 
     #[test]
+    fn test_toml_rtlsdr_with_sample_rate() {
+        #[cfg(feature = "rtlsdr")]
+        {
+            // sample_rate is at source level, not inside rtlsdr = { ... }
+            let toml = r#"
+                rtlsdr = { device = 0 }
+                sample_rate = 1536000
+                gain = 49.6
+            "#;
+            let source: Source =
+                toml::from_str(toml).expect("Failed to parse RTL-SDR with sample_rate");
+            assert_eq!(source.sample_rate, Some(1536000.0));
+        }
+    }
+
+    #[test]
     fn test_toml_soapy() {
         #[cfg(feature = "soapy")]
         {
             let toml = r#"
-                soapy = { args = "driver=rtlsdr" }
+                soapy = "driver=rtlsdr"
                 gain = 49.6
                 bias_tee = false
             "#;
             let source: Source = toml::from_str(toml).expect("Failed to parse SoapySDR");
             if let Address::Soapy(path) = &source.address {
-                assert_eq!(path.args, "driver=rtlsdr");
-                assert_eq!(path.sample_rate, None);
+                assert_eq!(path.soapy, "driver=rtlsdr");
             }
             assert_eq!(source.gain, Some(Gain::Manual(49.6)));
             assert_eq!(source.bias_tee, Some(false));
@@ -553,19 +730,20 @@ mod tests {
     }
 
     #[test]
-    fn test_toml_soapy_airspy_3m() {
+    fn test_toml_soapy_with_sample_rate() {
         #[cfg(feature = "soapy")]
         {
+            // sample_rate is at source level, not inside soapy = "..."
             let toml = r#"
-                soapy = { args = "driver=airspy", sample_rate = 3000000 }
+                soapy = "driver=airspy"
+                sample_rate = 3000000
                 gain = 49.6
             "#;
-            let source: Source =
-                toml::from_str(toml).expect("Failed to parse Airspy Mini at 3 MS/s");
+            let source: Source = toml::from_str(toml).expect("Failed to parse Airspy via SoapySDR");
             if let Address::Soapy(path) = &source.address {
-                assert_eq!(path.args, "driver=airspy");
-                assert_eq!(path.sample_rate, Some(3000000));
+                assert_eq!(path.soapy, "driver=airspy");
             }
+            assert_eq!(source.sample_rate, Some(3000000.0));
             assert_eq!(source.gain, Some(Gain::Manual(49.6)));
         }
     }
@@ -575,7 +753,7 @@ mod tests {
         #[cfg(feature = "airspy")]
         {
             let toml = r#"
-                airspy = { device = 0, sample_rate = 6000000 }
+                airspy = { device = 0 }
                 gain = "auto"
                 bias_tee = true
             "#;
@@ -583,10 +761,60 @@ mod tests {
             if let Address::Airspy(path) = &source.address {
                 assert_eq!(path.config.device, Some(0));
                 assert_eq!(path.config.serial, None);
-                assert_eq!(path.config.sample_rate, Some(6000000));
             }
             assert_eq!(source.gain, Some(Gain::Auto));
             assert_eq!(source.bias_tee, Some(true));
+        }
+    }
+
+    #[test]
+    fn test_toml_airspy_with_sample_rate() {
+        #[cfg(feature = "airspy")]
+        {
+            // sample_rate is at source level, not inside airspy = { ... }
+            let toml = r#"
+                airspy = { device = 0 }
+                sample_rate = 6000000
+                gain = "auto"
+            "#;
+            let source: Source =
+                toml::from_str(toml).expect("Failed to parse Airspy with sample_rate");
+            assert_eq!(source.sample_rate, Some(6000000.0));
+        }
+    }
+
+    #[test]
+    fn test_toml_hackrf() {
+        #[cfg(feature = "hackrf")]
+        {
+            let toml = r#"
+                hackrf = { device = 0 }
+                gain = "auto"
+            "#;
+            let source: Source = toml::from_str(toml).expect("Failed to parse HackRF TOML");
+            if let Address::Hackrf(path) = &source.address {
+                assert_eq!(path.config.device, Some(0));
+                assert_eq!(path.config.amp_enable, None);
+            }
+            assert_eq!(source.gain, Some(Gain::Auto));
+        }
+    }
+
+    #[test]
+    fn test_toml_hackrf_with_amp() {
+        #[cfg(feature = "hackrf")]
+        {
+            let toml = r#"
+                hackrf = { device = 0, amp_enable = true }
+                bias_tee = false
+            "#;
+            let source: Source =
+                toml::from_str(toml).expect("Failed to parse HackRF with amp_enable");
+            if let Address::Hackrf(path) = &source.address {
+                assert_eq!(path.config.device, Some(0));
+                assert_eq!(path.config.amp_enable, Some(true));
+            }
+            assert_eq!(source.bias_tee, Some(false));
         }
     }
 
@@ -638,12 +866,11 @@ mod tests {
 
     #[test]
     fn test_url_backward_compatibility() {
-        // Test that URL string parsing still works
         #[cfg(feature = "rtlsdr")]
         {
             let source = Source::from_str("rtlsdr://").expect("Failed to parse rtlsdr:// URL");
             if let Address::Rtlsdr(path) = &source.address {
-                assert_eq!(path.config.device, Some(0)); // Default device
+                assert_eq!(path.config.device, Some(0));
             }
         }
 
@@ -661,7 +888,6 @@ mod tests {
             let source = Source::from_str("airspy://1").expect("Failed to parse airspy://1 URL");
             if let Address::Airspy(path) = &source.address {
                 assert_eq!(path.config.device, Some(1));
-                assert_eq!(path.config.serial, None);
             }
 
             let source = Source::from_str("airspy://serial=0x35AC63DC2D8C7A4F")
@@ -669,6 +895,19 @@ mod tests {
             if let Address::Airspy(path) = &source.address {
                 assert_eq!(path.config.device, None);
                 assert_eq!(path.config.serial, Some("0x35AC63DC2D8C7A4F".to_string()));
+            }
+        }
+
+        #[cfg(feature = "hackrf")]
+        {
+            let source = Source::from_str("hackrf://").expect("Failed to parse hackrf:// URL");
+            if let Address::Hackrf(path) = &source.address {
+                assert_eq!(path.config.device, Some(0));
+            }
+
+            let source = Source::from_str("hackrf://1").expect("Failed to parse hackrf://1 URL");
+            if let Address::Hackrf(path) = &source.address {
+                assert_eq!(path.config.device, Some(1));
             }
         }
     }

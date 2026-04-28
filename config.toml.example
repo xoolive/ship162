@@ -20,22 +20,23 @@ prevent_sleep = false
 # redis_topic = "ship162"
 
 # Multiple sources can be defined. Each [[sources]] section defines one source.
+# All SDR sources share the same top-level fields for gain, sample_rate, and bias_tee.
 
 # --- RTL-SDR Examples ---
 
-# Example 1: RTL-SDR with device index (default 288 kHz sample rate)
+# Example 1: RTL-SDR with device index
 [[sources]]
 rtlsdr = { device = 0 }
 gain = 49.6        # Recommended gain for AIS reception (default: 49.6)
 bias_tee = false   # Enable to power external LNA (default: false)
 
-# Example 2: RTL-SDR with custom sample rate (e.g., 1.536 MS/s)
+# Example 2: RTL-SDR with custom sample rate at source level
 # [[sources]]
-# rtlsdr = { device = 0, sample_rate = 1536000 }
+# rtlsdr = { device = 0 }
+# sample_rate = 1536000   # 1.536 MS/s (default: 288000)
 # gain = 49.6
-# bias_tee = false
 
-# Example 3: RTL-SDR with serial number
+# Example 3: RTL-SDR selected by serial number
 # [[sources]]
 # rtlsdr = { serial = "00000001" }
 # gain = 49.6
@@ -46,45 +47,66 @@ bias_tee = false   # Enable to power external LNA (default: false)
 # rtlsdr = { manufacturer = "Realtek", product = "RTL2838", serial = "00000001" }
 # gain = 49.6
 
-# --- SoapySDR Examples ---
+# --- Airspy Examples ---
 
-# Example 5: SoapySDR source with RTL-SDR driver
-# [[sources]]
-# soapy = { args = "driver=rtlsdr" }
-# gain = 49.6
-# bias_tee = false
-
-# Example 6: Airspy Mini at 3 MS/s (automatically upsampled to 3.072 MS/s)
-# [[sources]]
-# soapy = { args = "driver=airspy", sample_rate = 3000000 }
-# gain = 49.6
-
-# --- Direct Airspy Examples (requires `--features airspy`) ---
-
-# Example 7: Airspy default device at 6 MS/s
+# Example 5: Airspy default device at 6 MS/s
 # [[sources]]
 # airspy = { device = 0 }
 # gain = "auto"
 # bias_tee = false
 
-# Example 8: Airspy selected by serial with custom sample rate
+# Example 6: Airspy with explicit sample rate
 # [[sources]]
-# airspy = { serial = "0x35AC63DC2D8C7A4F", sample_rate = 3000000 }
+# airspy = { device = 0 }
+# sample_rate = 6000000   # 6 MS/s (default for Airspy)
 # gain = "auto"
+
+# Example 7: Airspy selected by serial number
+# [[sources]]
+# airspy = { serial = "0x35AC63DC2D8C7A4F" }
+# gain = "auto"
+# bias_tee = false
+
+# --- HackRF Examples ---
+
+# Example 8: HackRF default device
+# [[sources]]
+# hackrf = { device = 0 }
+# gain = "auto"
+
+# Example 9: HackRF with RF amplifier enabled
+# [[sources]]
+# hackrf = { device = 0, amp_enable = true }
+# gain = "auto"
+# bias_tee = false
+
+# --- SoapySDR Examples ---
+
+# Example 10: SoapySDR with RTL-SDR driver
+# [[sources]]
+# soapy = "driver=rtlsdr"
+# gain = 49.6
+# bias_tee = false
+
+# Example 11: Airspy Mini at 3 MS/s via SoapySDR
+# [[sources]]
+# soapy = "driver=airspy"
+# sample_rate = 3000000   # 3 MS/s (automatically upsampled for demodulation)
+# gain = 49.6
 
 # --- IQ File Source ---
 
-# Example 9: IQ file replay (assumes 288 kHz sample rate, cu8 format)
+# Example 12: IQ file replay (cu8 format, sample_rate defaults to 288 kHz)
 # [[sources]]
 # iqfile = "/path/to/recording.iq"
 
 # --- TCP Source ---
 
-# Example 10: TCP source (Norwegian AIS server)
+# Example 13: TCP source (Norwegian AIS server)
 [[sources]]
 tcp = "153.44.253.27:5631"
 
-# Example 11: TCP source with SSH tunnel (requires ssh feature)
+# Example 14: TCP source with SSH tunnel (requires ssh feature)
 # [[sources]]
 # tcp = { host = "remote-ais-server.example.com", port = 5631, jump = "jumphost" }
 
@@ -95,53 +117,43 @@ tcp = "153.44.253.27:5631"
 
 # --- WebSocket Source --
 
-# Example 12: WebSocket source
+# Example 15: WebSocket source
 # [[sources]]
 # ws = "ws://remote_host:88888"
 
-# Example 13: WebSocket source with SSH tunnel (requires ssh feature)
+# Example 16: WebSocket source with SSH tunnel (requires ssh feature)
 # [[sources]]
 # ws = { url = "ws://remote_host:88888", jump = "jumphost" }
 
 # --- MQTT Source ---
 
-# Example 14: MQTT source (Finnish Digitraffic broker)
+# Example 17: MQTT source (Finnish Digitraffic broker)
 [[sources]]
 mqtt = "mqtt://mqtt.digitraffic.fi"
 
 
-# ========== GAIN RECOMMENDATIONS ==========
+# ========== GAIN ==========
 #
-# For AIS reception at 162 MHz, maximum gain is recommended:
+# All SDR sources share the top-level `gain` field:
 #
-# RTL-SDR:  49.6 dB (maximum gain)
-# SoapySDR: 49.6 dB (when using RTL-SDR driver)
-# Airspy:   auto gain (recommended default)
-# PlutoSDR: 73.0 dB (maximum gain)
+#   gain = 49.6        # Manual gain in dB
+#   gain = "auto"      # Automatic gain control (Airspy, HackRF)
 #
-# These defaults are used when gain is not specified.
-#
-# You may need to adjust gain based on:
-# - Your antenna setup
-# - Local interference levels
-# - Distance from transmitters
-# - Use of external LNA (Low Noise Amplifier)
-#
-# ========== BIAS-TEE SUPPORT ==========
-#
-# Bias-tee provides power to external LNAs through the antenna cable.
-# Only supported on RTL-SDR and SoapySDR devices.
-# 
-# WARNING: Only enable bias-tee if you have an LNA that requires it!
-# Enabling bias-tee on devices without LNA protection can damage equipment.
-#
-# bias_tee = true   # Enable 5V bias-tee power
-# bias_tee = false  # Disable (default)
+# Recommended defaults per device:
+#   RTL-SDR:  49.6 dB (maximum, best for AIS at 162 MHz)
+#   SoapySDR: 49.6 dB
+#   Airspy:   "auto" (recommended; device uses sensitivity gain table)
+#   HackRF:   "auto" (device applies sensible LNA/VGA defaults)
 
-# ========== SAMPLE RATE SUPPORT ==========
+# ========== SAMPLE RATE ==========
 #
-# All SDR sources (RTL-SDR, SoapySDR, PlutoSDR) support configurable sample rates.
-# Default: 288 kHz (optimal for AIS reception)
+# `sample_rate` is a top-level source field, not inside the device config:
+#
+#   [[sources]]
+#   rtlsdr = { device = 0 }
+#   sample_rate = 1536000     # 1.536 MS/s
+#
+# Default: 288000 Hz (288 kHz) for RTL-SDR and HackRF; 6000000 Hz (6 MS/s) for Airspy.
 #
 # Supported rates (automatically decimated to 96 kHz for AIS decoding):
 # - 96000 Hz      (96 kHz, direct passthrough)
@@ -157,54 +169,40 @@ mqtt = "mqtt://mqtt.digitraffic.fi"
 # - 6144000 Hz    (6.144 MS/s, ÷64)
 # - 12288000 Hz   (12.288 MS/s, ÷128)
 #
-# Non-standard rates (automatically upsampled to nearest standard rate):
-# - 3000000 Hz → 3.072 MS/s (Airspy Mini)
-# - 6000000 Hz → 6.144 MS/s (Airspy Mini)
-# - 10000000 Hz → 12.288 MS/s (Airspy R2)
+# Non-standard rates are automatically upsampled to the nearest supported rate:
+#   3000000 → 3072000 (Airspy Mini)
+#   6000000 → 6144000 (Airspy Mini / R2)
+
+# ========== BIAS-TEE ==========
 #
-# Example configurations:
-#   rtlsdr = { device = 0, sample_rate = 1536000 }  # RTL-SDR at 1.536 MS/s
-#   soapy = { args = "driver=airspy", sample_rate = 3000000 }  # Airspy at 3 MS/s
-#   pluto = { pluto = "192.168.2.1", sample_rate = 3072000 }  # PlutoSDR at 3.072 MS/s
+# Powers external LNAs through the antenna cable.
+# Supported on RTL-SDR, SoapySDR, Airspy, and HackRF.
 #
-# Higher sample rates provide better signal quality but use more CPU.
-# For most setups, the default 288 kHz is optimal.
+# WARNING: Only enable if your LNA requires it — wrong use can damage hardware.
+#
+#   bias_tee = true    # Enable 5 V on antenna port
+#   bias_tee = false   # Default
 
 # ========== SSH TUNNELING ==========
 #
-# SSH tunneling allows secure connections to remote AIS sources through jump hosts.
-# Requires the 'ssh' feature to be enabled: cargo build --features ssh
+# SSH tunneling connects to remote AIS sources through a jump host.
+# Requires the `ssh` feature.
 #
-# Configuration uses standard SSH setup:
-# - ~/.ssh/config   - SSH client configuration
-# - ~/.ssh/known_hosts - Host verification keys
-# - ~/.ssh/id_* - SSH keys for authentication
-#
-# Example SSH config (~/.ssh/config):
-#
-#   Host jumphost.example.com
-#     User myuser
-#     IdentityFile ~/.ssh/id_ed25519
-#
-# TCP source with SSH tunnel:
 #   tcp = { host = "remote-server", port = 5631, jump = "jumphost.example.com" }
-#
-# The 'jump' parameter refers to a hostname in your ~/.ssh/config or a direct hostname.
+#   ws  = { url  = "ws://remote-server:8080/path", jump = "jumphost.example.com" }
 
 # ========== OUTPUT SERVERS ==========
 #
-# Serve decoded AIS messages as timestamped NMEA (Norwegian coast guard format)
-# to connected clients via TCP, UDP, or WebSocket.
-#
-# This allows ship162 to act as a local AIS data source: decode from SDR
-# and re-broadcast to other tools as if they were connecting to the
-# Norwegian Coastal Administration feed.
+# Re-broadcast decoded AIS as timestamped NMEA sentences.
 
-# TCP output server: clients connect and receive NMEA stream
+# TCP output: clients connect and receive NMEA stream
 # serve_tcp = "0.0.0.0:5631"
 
-# UDP output server: clients register by sending any datagram, then receive NMEA
+# UDP output: ship162 sends NMEA to registered clients
 # serve_udp = "0.0.0.0:5632"
 
-# WebSocket output server: clients connect via ws:// and receive NMEA messages
+# WebSocket output: clients connect via ws://
 # serve_ws = "0.0.0.0:88888"
+
+# Static UDP targets (always forwarded, no registration needed)
+# udp_targets = ["feedme.example.org:12345"]

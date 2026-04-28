@@ -52,12 +52,11 @@ impl EventHandler {
                     match maybe_event {
                       Some(Ok(evt)) => {
                         match evt {
-                          crossterm::event::Event::Key(key) => {
+                          crossterm::event::Event::Key(key)
                             if key.kind == crossterm::event::KeyEventKind::Press
-                              && tx.send(Event::Key(key)).is_err() {
+                              && tx.send(Event::Key(key)).is_err() => {
                                 break; // Channel closed, exit gracefully
-                              }
-                          },
+                              },
                           crossterm::event::Event::Resize(col,_) => {width = col},
                           crossterm::event::Event::Mouse(event) => {
                             if event.kind == crossterm::event::MouseEventKind::ScrollUp
