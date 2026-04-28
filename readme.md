@@ -1,377 +1,179 @@
 # ship162
 
-**ship162** is a complete maritime tracking application that includes the rs162 Rust library for decoding AIS (Automatic Identification System) messages from binary feeds and NMEA sentences using the `deku` library for clean, declarative binary data parsing.
+**ship162** is a lightweight maritime AIS receiver and decoder, the maritime equivalent of [jet1090](https://github.com/xoolive/jet1090/) for aviation.
 
-The library takes its inspiration from the Python [pyais](https://github.com/M0r13n/pyais/) library and leverages [deku](https://github.com/sharksforarms/deku) to provide efficient, type-safe AIS message decoding. The major specificity compared to other implementations is the deku-based decoder, which enables clean bit-level parsing with compile-time guarantees.
-
-The directions ambitioned by ship162 include:
-
-- providing high-performance AIS decoding in Rust;
-- offering efficient multi-receiver AIS decoding;
-- serving real-time enriched maritime data to external applications;
-- **end-to-end demodulation and decoding** from SDR hardware to structured data.
-
-The ultimate goal is to create a complete maritime tracking solution that can receive raw radio signals and output structured AIS data, similar to what dump1090 does for aviation ADS-B messages.
+It decodes AIS (Automatic Identification System) messages from SDR hardware, TCP feeds, WebSocket streams, and MQTT brokers, and can display them in a real-time terminal dashboard.
 
 ![ship162 TUI displaying real-time AIS messages](./docs/images/ship162.png)
 
-## Features
-
-- **Complete AIS message support**: Handles all standard AIS message types (1-27)
-- **NMEA sentence parsing**: Full support for AIVDM/AIVDO messages with multi-fragment assembly
-- **Type-safe decoding**: Leverages Rust's type system and deku for reliable parsing
-- **JSON serialization**: Built-in serde support for easy data export
-- **Real-time processing**: Efficient handling of live AIS data streams
-- **Multi-fragment messages**: Automatic assembly of multi-sentence AIS messages
-
-### Optional Features
-
-- **`rtlsdr`**: Support for real-time demodulation from RTL-SDR USB dongles (enabled via `desperado`).
-- **`mqtt`**: Support for connecting to MQTT brokers (e.g., Finnish Digitraffic). **Disabled by default**.
-
-## Similar Projects
-
-- [AIS-catcher](https://github.com/jvde-github/AIS-catcher) in C++
-- [pyais](https://github.com/M0r13n/pyais/) in Python
-- [ais](https://github.com/squidpickles/ais) or [nmea-parser](https://github.com/zaari/nmea-parser) in Rust
-
-The key differentiator of ship162 is its use of deku for declarative binary parsing, providing both performance and correctness guarantees that are difficult to achieve with manual bit manipulation.
-
-## Future Roadmap
-
-The long-term vision for ship162 is to become a complete **end-to-end demodulation and decoding application** that can:
-
-- Receive raw RF signals from SDR hardware
-- Demodulate AIS signals (161.975 MHz and 162.025 MHz)
-- Decode NMEA sentences in real-time
-- Provide Python and WebAssembly bindings
-- Offer a complete maritime tracking solution
-
-This will make ship162 the maritime equivalent of rs1090 for aviation tracking.
-
 ## Installation
 
-Run the following Cargo command in your project directory:
+Pre-built binaries for Linux, macOS, and Windows are available on the [GitHub Releases](https://github.com/xoolive/ship162/releases) page.
+
+**Shell installer** (Linux and macOS):
 
 ```sh
-# Standard installation
-cargo add rs162
-
-# With MQTT support
-cargo add rs162 --features mqtt
-
-# With RTL-SDR support
-cargo add rs162 --features rtlsdr
+curl --proto '=https' --tlsv1.2 -LsSf https://github.com/xoolive/ship162/releases/latest/download/ship162-installer.sh | sh
 ```
 
-Or add the following line to your `Cargo.toml`:
-
-```toml
-rs162 = "0.1.0"  # check for the latest version
-```
-
-## Configuration File
-
-The `ship162` application supports TOML configuration files for defining multiple AIS data sources. This makes it easy to configure and manage different input sources without using command-line arguments.
-
-### Configuration File Locations
-
-The application searches for configuration files in the following locations (in priority order):
-
-1. Path specified by the `SHIP162_CONFIG` environment variable
-2. `$XDG_CONFIG_HOME/ship162/config.toml`
-3. `~/.config/ship162/config.toml`
-
-### Configuration Format
-
-```toml
-# Example configuration with multiple sources
-
-# RTL-SDR device by index
-[[sources]]
-rtlsdr = { device = 0 }
-gain = 49.6        # Recommended max gain for 162 MHz
-bias_tee = true    # Enable bias-tee if using powered antenna
-
-# RTL-SDR device by serial number
-[[sources]]
-rtlsdr = { serial = "00000001" }
-gain = 49.6
-
-# RTL-SDR device by manufacturer/product filter
-[[sources]]
-rtlsdr = { manufacturer = "Realtek", product = "RTL2838UHIDIR" }
-gain = 49.6
-
-# SoapySDR device 
-[[sources]]
-soapy = "driver=rtlsdr"
-gain = 49.6
-bias_tee = false
-
-# TCP source (e.g., Norwegian Coastal Administration)
-[[sources]]
-tcp = "153.44.253.27:5631"
-
-# TCP source with SSH tunnel (requires --features ssh)
-# [[sources]]
-# tcp = { host = "remote-ais-server.example.com", port = 5631, jump = "jumphost" }
-
-# MQTT source (requires --features mqtt)
-[[sources]]
-mqtt = "mqtt://mqtt.digitraffic.fi"
-
-# I/Q sample file
-[[sources]]
-iqfile = "/path/to/samples.cf32"
-```
-
-### Configuration Options
-
-#### RTL-SDR Sources
-
-RTL-SDR devices can be selected by:
-
-- **Device index**: `rtlsdr = { device = 0 }`
-- **Serial number**: `rtlsdr = { serial = "00000001" }`
-- **Manufacturer/Product**: `rtlsdr = { manufacturer = "Realtek", product = "RTL2838UHIDIR" }`
-
-Common options:
-
-- `gain`: Gain in dB (recommended: 49.6 for max gain)
-- `bias_tee`: Enable/disable bias-tee (default: false)
-
-#### SoapySDR Sources
-
-SoapySDR sources use a driver string:
-
-- `soapy = "driver=rtlsdr"` for RTL-SDR via SoapySDR
-- `soapy = "driver=lime"` for LimeSDR
-
-(Warning: some devices, e.g. Adalm Pluto SDR, do not go as low as 162MHz and cannot demodulate AIS signals)
-
-Common options:
-
-- `gain`: Gain in dB
-- `bias_tee`: Enable/disable bias-tee
-
-#### TCP Sources
-
-TCP sources connect to a remote AIS feed:
-
-- `tcp = "host:port"` - Simple TCP connection
-- `tcp = { host = "hostname", port = 5631 }` - Structured format
-- `tcp = { host = "hostname", port = 5631, jump = "jumphost" }` - SSH tunneled connection (requires `--features ssh`)
-
-##### SSH Tunneling
-
-SSH tunneling allows secure connections to remote AIS sources through jump hosts. This feature requires building with the `ssh` feature:
+**Homebrew** (macOS and Linux):
 
 ```sh
-cargo build --release --features rtlsdr,ssh
+brew install xoolive/homebrew/ship162
 ```
 
-**Configuration:**
-
-```toml
-# TCP source with SSH tunnel
-[[sources]]
-tcp = { host = "remote-ais-server.example.com", port = 5631, jump = "jumphost.example.com" }
-```
-
-**SSH Setup:**
-
-SSH tunneling uses standard SSH configuration:
-
-1. **~/.ssh/config** - SSH client configuration:
-   ```
-   Host jumphost.example.com
-     User myuser
-     IdentityFile ~/.ssh/id_ed25519
-   ```
-
-2. **~/.ssh/known_hosts** - Host verification keys (populated automatically on first connection)
-
-3. **~/.ssh/id_*** - SSH keys for authentication (generate with `ssh-keygen`)
-
-The `jump` parameter refers to a hostname in your `~/.ssh/config` or a direct hostname that can be resolved.
-
-#### MQTT Sources
-
-MQTT sources connect to an MQTT broker (requires `--features mqtt`):
-
-- `mqtt = "mqtt://broker.example.com"`
-
-No additional configuration options.
-
-#### I/Q File Sources
-
-I/Q file sources read from a file containing raw I/Q samples:
-
-- `iqfile = "/path/to/file.cf32"`
-
-No additional configuration options.
-
-### Using Configuration Files
-
-Create a configuration file at `~/.config/ship162/config.toml` and run:
+**Cargo**:
 
 ```sh
-cargo run --release --features rtlsdr,soapy
+cargo install ship162
 ```
 
-Or specify a custom configuration file location:
+### Building from source
+
+The default build includes RTL-SDR, Airspy, HackRF, and SSH support:
 
 ```sh
-SHIP162_CONFIG=/path/to/config.toml cargo run --release
+cargo install --git https://github.com/xoolive/ship162
 ```
 
-See `config.toml.example` in the repository for a complete example with documentation.
+MQTT support requires an extra C build dependency ([paho-mqtt](https://github.com/eclipse/paho.mqtt.c)) and must be opted into explicitly:
+
+```sh
+cargo install ship162 --features mqtt
+```
+
+### Linux: detach the kernel DVB driver
+
+The RTL-SDR, Airspy, and HackRF backends use a pure-Rust USB driver ([nusb](https://github.com/kevinmehall/nusb)) that talks directly to the USB subsystem. On Linux you need to unload the kernel DVB modules first so they do not hold the device:
+
+```sh
+sudo modprobe -r dvb_usb_rtl28xxu rtl2832
+```
+
+To make this permanent, blacklist the module:
+
+```sh
+echo 'blacklist dvb_usb_rtl28xxu' | sudo tee /etc/modprobe.d/rtlsdr.conf
+```
 
 ## Usage
 
-### Basic AIS Message Decoding
-
-```rust
-use rs162::decode::ais::Message;
-
-fn main() -> Result<(), Box<dyn std::error::Error>> {
-    // Single NMEA sentence
-    let nmea = "!AIVDM,1,1,,B,15M67FC000G?ufbE`FepT@3n00Sa,0*5C";
-    let message = Message::from_nmea(&[nmea])?;
-
-    // Convert to JSON
-    let json = serde_json::to_string(&message)?;
-    println!("{}", json);
-
-    Ok(())
-}
-```
-
-### Multi-fragment Messages
-
-```rust
-use rs162::decode::ais::Message;
-
-fn main() -> Result<(), Box<dyn std::error::Error>> {
-    // Multi-sentence Type 5 static and voyage data
-    let sentences = [
-        "!AIVDM,2,1,1,A,55?MbV02;H;s<HtKR20EHE:0@T4@Dn2222222216L961O5Gf0NSQEp6ClRp8,0*1C",
-        "!AIVDM,2,2,1,A,88888888880,2*25",
-    ];
-
-    let message = Message::from_nmea(&sentences)?;
-    let json = serde_json::to_string(&message)?;
-    println!("{}", json);
-
-    Ok(())
-}
-```
-
-### Processing NMEA Files
+Run `ship162 --help` for the full list of options. The most common invocations:
 
 ```sh
-# See examples/nmea_file.rs for a complete file processor
-cargo run --example nmea_file
+# Interactive TUI with an RTL-SDR dongle
+ship162 --interactive rtlsdr://
+
+# JSON output from the Norwegian Coastal Administration free feed
+ship162 --verbose tcp://153.44.253.27:5631
+
+# Write to a file while also displaying the TUI
+ship162 --interactive --output ais.jsonl rtlsdr://
 ```
 
-### Real-time TCP Stream Processing
+## Configuration file
+
+Settings and sources can be stored in a TOML file. ship162 looks for configuration in order:
+
+1. `$SHIP162_CONFIG` (environment variable)
+2. `$XDG_CONFIG_HOME/ship162/config.toml`
+3. `~/.config/ship162/config.toml`
+
+```toml
+interactive = true
+
+[[sources]]
+rtlsdr = { device = 0 }
+gain = 49.6
+
+[[sources]]
+tcp = "153.44.253.27:5631"
+```
+
+See [`config.toml.example`](config.toml.example) for the full reference with all sources and options.
+
+## Sources
+
+### SDR hardware
+
+All SDR sources accept `gain`, `sample_rate`, and `bias_tee` at the source level:
+
+```toml
+# RTL-SDR (default gain 49.6 dB)
+[[sources]]
+rtlsdr = { device = 0 }
+gain = 49.6
+bias_tee = false
+
+# Airspy R2 or Mini (default gain 50, sensitivity mode)
+[[sources]]
+airspy = { device = 0 }
+gain = 50
+sample_rate = 6000000
+
+# HackRF (default LNA=40 dB, VGA=55 dB)
+[[sources]]
+hackrf = { device = 0, amp_enable = true }
+
+# Airspy Mini via SoapySDR at 3 MS/s
+[[sources]]
+soapy = "driver=airspy"
+sample_rate = 3000000
+gain = 49.6
+```
+
+### TCP
+
+```toml
+[[sources]]
+tcp = "153.44.253.27:5631"
+
+# With SSH tunnel (built-in, no openssh needed)
+[[sources]]
+tcp = { host = "remote-host", port = 5631, jump = "jumphost" }
+```
+
+### WebSocket
+
+```toml
+[[sources]]
+ws = "ws://remote-host:88888"
+```
+
+### MQTT
+
+Requires building with `--features mqtt`. Connects to the [Finnish Digitraffic](https://www.digitraffic.fi/en/marine-traffic/) broker by default:
+
+```toml
+[[sources]]
+mqtt = "mqtt://mqtt.digitraffic.fi"
+```
+
+## Output
+
+Decoded messages are emitted as JSON on stdout (`--verbose`), written to a file (`--output`), or published to Redis (`--redis-url`). The application can also re-broadcast decoded NMEA sentences to downstream consumers:
 
 ```sh
-# See examples/nmea_tcp.rs for live AIS data processing
-# Connects to Norwegian Coastal Administration's free AIS feed
-cargo run --release --example nmea_tcp -- 153.44.253.27:5631 | \
-  jq -c '.message + .mmsi_info + {timestamp: (.timestamp | strftime("%Y-%m-%dT%H:%M:%SZ"))}'
+# Serve NMEA over TCP for other applications (e.g. OpenCPN)
+ship162 --serve-tcp 0.0.0.0:5631 rtlsdr://
+
+# Forward to a UDP endpoint
+ship162 --serve-udp 0.0.0.0:5632 rtlsdr://
 ```
 
-### Demodulating from I/Q Samples
+## Free AIS data sources
 
-```sh
-# See examples/iqfile.rs for processing I/Q sample files
-cargo run --release --example iqfile | \
-  jq -c '.message + .mmsi_info + {timestamp: (.timestamp | strftime("%Y-%m-%dT%H:%M:%SZ"))}'
-```
+| Source                           | Address                      | Notes                            |
+| -------------------------------- | ---------------------------- | -------------------------------- |
+| Norwegian Coastal Administration | `tcp://153.44.253.27:5631`   | IEC 61162-1 NMEA with timestamps |
+| Finnish Digitraffic              | `mqtt://mqtt.digitraffic.fi` | Requires `--features mqtt`       |
 
-### Demodulating from `rtl_tcp`
+## Similar projects
 
-```sh
-# See examples/rtltcp.rs
-rtl_tcp -a 127.0.0.1 -p 1234 -f 162M -s 288k -g 49.6
-cargo run --release --example rtltcp | \
-  jq -c '.message + .mmsi_info + {timestamp: (.timestamp | strftime("%Y-%m-%dT%H:%M:%SZ"))}'
-```
-
-### Demodulating from RTL-SDR Devices
-
-> [!WARNING]  
-> Please read the following important note for Linux users: <https://github.com/ccostes/rtl-sdr-rs#uload-kernel-modules>
-
-```sh
-# See examples/rtlsdr.rs
-cargo run --release --example rtlsdr | \
-  jq -c '.message + .mmsi_info + {timestamp: (.timestamp | strftime("%Y-%m-%dT%H:%M:%SZ"))}'
-
-# See examples/rtlsdr_async.rs
-cargo run --release --example rtlsdr_async | \
-  jq -c '.message + .mmsi_info + {timestamp: (.timestamp | strftime("%Y-%m-%dT%H:%M:%SZ"))}'
-```
-
-## Technical Standards
-
-The library implements:
-
-- **IEC 61162-1**: Maritime navigation digital interfaces (NMEA 0183)
-- **ITU-R M.1371**: Technical characteristics for AIS
-- **IEC 62320-1**: AIS transponder equipment standards
-
-## Data Sources
-
-### Norwegian Coastal Administration
-
-Real-time AIS data is freely available from the Norwegian Coastal Administration:
-
-- **Host**: 153.44.253.27
-- **Port**: 5631
-- **Format**: IEC 61162-1 (NMEA with timestamps)
-- **License**: Norwegian license for public data
-
-More information: <https://www.kystverket.no/en/sea-transport-and-ports/ais/access-to-ais-data/>
-
-### Finnish Digitraffic MQTT Feed
-
-> [!NOTE]
-> You must compile the library or application with `--features mqtt` to access this source.
-
-Real-time AIS data is available via MQTT from Finnish Digitraffic:
-
-- **Broker**: `mqtt.digitraffic.fi`
-- **Topics**:
-  - `vessels-v2/\<mmsi\>/metadata`
-  - `vessels-v2/\<mmsi\>/locations`
-  - `vessels-v2/status`
-- **Format**: JSON messages containing AIS data
-- **License**:
-  "Kaikki Digitraffic -palvelun kautta jaettava tieto on koneluettavaa avointa dataa ja on käytettävissä Creative Commons 4.0 Nimeä -käyttöluvalla, mikä mahdollistaa uusien palveluiden ja ohjelmistojen kehittämisen."
-  (machine translation: _"All data distributed through the Digitraffic service is machine-readable open data and is available under the Creative Commons 4.0 Attribution license, which enables the development of new services and software."_)
-
-More information: <https://www.digitraffic.fi/en/marine-traffic/>
-
-## Agent-based coding
-
-Most of the codebase has been generated with the assistance of Claude Sonnet 4, using specifications from:
-
-- [GPSD AIVDM documentation](https://gpsd.gitlab.io/gpsd/AIVDM.html)
-- Test cases adapted from the [pyais](https://github.com/M0r13n/pyais/) library
-- ITU-R M.1371 specifications
-
-## Contributing
-
-Contributions are welcome! The project particularly benefits from:
-
-- Real-world test cases and data samples
-- Performance optimizations
-- Documentation improvements
+- [AIS-catcher](https://github.com/jvde-github/AIS-catcher) — C++, very comprehensive SDR support
+- [pyais](https://github.com/M0r13n/pyais/) — Python decoder
+- [ais](https://github.com/squidpickles/ais) / [nmea-parser](https://github.com/zaari/nmea-parser) — Rust decoders
 
 ## License
 
-This project is licensed under the MIT License. See the license file for details.
+MIT — see [license.md](license.md).
