@@ -16,7 +16,7 @@ Pre-built binaries for Linux, macOS, and Windows are available on the [GitHub Re
 curl --proto '=https' --tlsv1.2 -LsSf https://github.com/xoolive/ship162/releases/latest/download/ship162-installer.sh | sh
 ```
 
-**Homebrew** (macOS and Linux):
+**Homebrew** (macOS):
 
 ```sh
 brew install xoolive/homebrew/ship162
@@ -26,6 +26,12 @@ brew install xoolive/homebrew/ship162
 
 ```sh
 cargo install ship162
+```
+
+**Arch OS** (AUR):
+
+```sh
+yay -S ship162-bin
 ```
 
 ### Building from source
