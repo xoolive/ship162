@@ -23,7 +23,11 @@ use rs162::dsp::ais::AIS_SAMPLE_RATE_288K;
 use serde::Deserialize;
 use state::AppState;
 use std::{path::PathBuf, sync::Arc};
-use tokio::{fs, io::AsyncWriteExt, sync::Mutex};
+use tokio::{
+    fs,
+    io::AsyncWriteExt,
+    sync::{watch, Mutex},
+};
 use tracing::warn;
 use tracing_subscriber::{fmt, prelude::*, EnvFilter};
 
@@ -226,8 +230,46 @@ async fn main() -> Result<()> {
     let state = Arc::new(Mutex::new(AppState::new()));
 
     let (tx, mut rx) = tokio::sync::mpsc::channel(10);
+    let (quit_tx, mut quit_rx) = watch::channel(false);
     // Add a shutdown signal channel
     let (shutdown_tx, _shutdown_rx) = tokio::sync::broadcast::channel::<()>(1);
+
+    if terminal.is_some() {
+        let quit_tx_signal = quit_tx.clone();
+        let shutdown_tx_signal = shutdown_tx.clone();
+
+        #[cfg(unix)]
+        tokio::spawn(async move {
+            use tokio::signal::unix::{signal, SignalKind};
+
+            let mut sigint =
+                signal(SignalKind::interrupt()).expect("Failed to create SIGINT handler");
+            let mut sigterm =
+                signal(SignalKind::terminate()).expect("Failed to create SIGTERM handler");
+            let mut sighup = signal(SignalKind::hangup()).expect("Failed to create SIGHUP handler");
+
+            tokio::select! {
+                _ = sigint.recv() => {},
+                _ = sigterm.recv() => {},
+                _ = sighup.recv() => {},
+            }
+
+            tui::restore().ok();
+            let _ = quit_tx_signal.send(true);
+            let _ = shutdown_tx_signal.send(());
+        });
+
+        #[cfg(windows)]
+        tokio::spawn(async move {
+            tokio::signal::ctrl_c()
+                .await
+                .expect("Failed to listen for Ctrl+C");
+
+            tui::restore().ok();
+            let _ = quit_tx_signal.send(true);
+            let _ = shutdown_tx_signal.send(());
+        });
+    }
 
     // NMEA broadcast channel for output servers (TCP/UDP/WebSocket)
     let (nmea_tx, _nmea_rx) = tokio::sync::broadcast::channel::<String>(4096);
@@ -612,6 +654,7 @@ async fn main() -> Result<()> {
         let size = terminal.size()?;
         let mut events = EventHandler::new(size.width);
         let terminal_state = state.clone();
+        let quit_tx_ui = quit_tx.clone();
 
         Some(tokio::spawn(async move {
             loop {
@@ -623,9 +666,11 @@ async fn main() -> Result<()> {
                 match events.next().await? {
                     Event::Key(key) => match key.code {
                         KeyCode::Char('q') | KeyCode::Char('Q') => {
+                            let _ = quit_tx_ui.send(true);
                             break;
                         }
                         KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                            let _ = quit_tx_ui.send(true);
                             break;
                         }
                         KeyCode::Char('j') | KeyCode::Down => {
@@ -672,7 +717,20 @@ async fn main() -> Result<()> {
         // Interactive mode: wait for either UI exit or message processing
         tokio::select! {
             _ = async {
-                while let Some(mut message) = rx.recv().await {
+                loop {
+                    if *quit_rx.borrow() {
+                        break;
+                    }
+
+                    let maybe_message = tokio::select! {
+                        _ = quit_rx.changed() => None,
+                        maybe_message = rx.recv() => maybe_message,
+                    };
+
+                    let Some(mut message) = maybe_message else {
+                        break;
+                    };
+
                     let state_guard = state.lock().await;
                     sources::process_sentence(state_guard, &mut message).await;
                     // Broadcast NMEA sentences to output servers
@@ -697,13 +755,27 @@ async fn main() -> Result<()> {
                 }
             } => {},
             _ = ui_handle => {
-                // UI has exited, send shutdown signal
+                // UI has exited, signal shutdown
+                let _ = quit_tx.send(true);
                 let _ = shutdown_tx.send(());
             }
         }
     } else {
         // Non-interactive mode: just process messages
-        while let Some(mut message) = rx.recv().await {
+        loop {
+            if *quit_rx.borrow() {
+                break;
+            }
+
+            let maybe_message = tokio::select! {
+                _ = quit_rx.changed() => None,
+                maybe_message = rx.recv() => maybe_message,
+            };
+
+            let Some(mut message) = maybe_message else {
+                break;
+            };
+
             let state_guard = state.lock().await;
             sources::process_sentence(state_guard, &mut message).await;
             // Broadcast NMEA sentences to output servers
@@ -727,6 +799,9 @@ async fn main() -> Result<()> {
             }
         }
     }
+
+    // Signal source and output tasks to shut down.
+    let _ = shutdown_tx.send(());
 
     // Wait for all source tasks to finish (with timeout)
     let timeout = tokio::time::Duration::from_secs(2);
