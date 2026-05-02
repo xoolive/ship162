@@ -1,0 +1,99 @@
+name: AUR Publish
+
+# Do not use `release: published` here: releases created by the Release
+# workflow use GITHUB_TOKEN, and GitHub suppresses workflows that would be
+# triggered by that token. `workflow_run` is reliable, but it also fires after
+# PR Release checks, so the job-level `if` below restricts publishing to tag
+# pushes (plus manual dispatch).
+on:
+  workflow_run:
+    workflows: ["Release"]
+    types:
+      - completed
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag to publish, e.g. v0.1.4"
+        required: true
+        type: string
+
+jobs:
+  aur:
+    name: Update AUR package
+    runs-on: ubuntu-latest
+    if: >-
+      ${{ github.event_name == 'workflow_dispatch' ||
+          (github.event.workflow_run.event == 'push' &&
+           github.event.workflow_run.conclusion == 'success') }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Get version from tag
+        id: version
+        env:
+          DISPATCH_TAG: ${{ inputs.tag }}
+          WORKFLOW_RUN_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          if [ -n "${DISPATCH_TAG}" ]; then
+            TAG_NAME="${DISPATCH_TAG}"
+          else
+            TAG_NAME=$(git tag --points-at "${WORKFLOW_RUN_SHA}" | grep -E '^v?[0-9]+\.[0-9]+\.[0-9]+' | sort -V | tail -n1)
+          fi
+
+          if [ -z "${TAG_NAME}" ]; then
+            echo "No release tag found" >&2
+            exit 1
+          fi
+
+          echo "tag=${TAG_NAME}" >> "$GITHUB_OUTPUT"
+          echo "version=${TAG_NAME#v}" >> "$GITHUB_OUTPUT"
+
+      - name: Wait for GitHub release assets
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG_NAME: ${{ steps.version.outputs.tag }}
+        run: |
+          for attempt in {1..12}; do
+            assets=$(gh release view "${TAG_NAME}" --json assets --jq '.assets[].name' 2>/dev/null || true)
+            if echo "${assets}" | grep -q '^ship162-x86_64-unknown-linux-gnu.tar.xz.sha256$' && \
+               echo "${assets}" | grep -q '^ship162-aarch64-unknown-linux-gnu.tar.xz.sha256$'; then
+              exit 0
+            fi
+            echo "Release assets not available yet, retrying..."
+            sleep 10
+          done
+
+          echo "Release assets not found for ${TAG_NAME}" >&2
+          exit 1
+
+      - name: Fetch release checksums
+        id: checksums
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          BASE_URL="https://github.com/${{ github.repository }}/releases/download/v${VERSION}"
+
+          X86_SHA=$(curl -fsSL "${BASE_URL}/ship162-x86_64-unknown-linux-gnu.tar.xz.sha256" | awk '{print $1}')
+          ARM_SHA=$(curl -fsSL "${BASE_URL}/ship162-aarch64-unknown-linux-gnu.tar.xz.sha256" | awk '{print $1}')
+
+          echo "x86_64=${X86_SHA}" >> "$GITHUB_OUTPUT"
+          echo "aarch64=${ARM_SHA}" >> "$GITHUB_OUTPUT"
+
+      - name: Generate PKGBUILD
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          sed -i "s/^pkgver=.*/pkgver=${VERSION}/" aur/ship162-bin/PKGBUILD
+          sed -i "s/^sha256sums_x86_64=.*/sha256sums_x86_64=('${{ steps.checksums.outputs.x86_64 }}')/" aur/ship162-bin/PKGBUILD
+          sed -i "s/^sha256sums_aarch64=.*/sha256sums_aarch64=('${{ steps.checksums.outputs.aarch64 }}')/" aur/ship162-bin/PKGBUILD
+          cat aur/ship162-bin/PKGBUILD
+
+      - name: Publish to AUR
+        uses: KSXGitHub/github-actions-deploy-aur@v4.1.3
+        with:
+          pkgname: ship162-bin
+          pkgbuild: aur/ship162-bin/PKGBUILD
+          commit_username: "Xavier Olive"
+          commit_email: "git@xoolive.org"
+          ssh_private_key: ${{ secrets.AUR_SSH_PRIVATE_KEY }}
+          commit_message: "Update to ${{ steps.version.outputs.version }}"
