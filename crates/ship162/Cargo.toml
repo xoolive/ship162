@@ -36,7 +36,7 @@ keepawake = "0.6.0"
 ratatui = "0.30"
 redis = { version = "1.2.0", features = ["tokio-comp"] }
 serde = "1.0.228"
-serde_json = "1.0.145"
+serde_json = "1.0.150"
 tokio = { version = "1", features = ["full"] }
 tracing = "0.1.44"
 toml = "0.9.10"
