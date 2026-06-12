@@ -1,3 +1,7 @@
+<div align="center">
+  <img src="docs/images/favicon.png" alt="ship162 Logo" width="200"/>
+</div>
+
 # ship162
 
 **ship162** is a lightweight maritime AIS receiver and decoder, the maritime equivalent of [jet1090](https://github.com/xoolive/jet1090/) for aviation.
