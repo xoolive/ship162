@@ -1,5 +1,15 @@
 use std::str::FromStr;
 
+#[cfg(feature = "airspy")]
+pub use desperado::sdr::parse_airspy_serial;
+#[cfg(feature = "soapy")]
+use desperado::sdr::SoapyPath;
+#[cfg(feature = "airspy")]
+use desperado::sdr::{AirspyDeviceConfig, AirspyPath};
+#[cfg(feature = "hackrf")]
+use desperado::sdr::{HackrfDeviceConfig, HackrfPath};
+#[cfg(feature = "rtlsdr")]
+use desperado::sdr::{RtlSdrDeviceConfig, RtlSdrPath};
 #[cfg(any(feature = "rtlsdr", feature = "soapy", feature = "airspy"))]
 use desperado::Gain;
 use rs162::{
@@ -48,102 +58,6 @@ pub struct WsStruct {
 pub enum WsPath {
     Short(String),
     Long(WsStruct),
-}
-
-/// Structured RTL-SDR device configuration for TOML
-#[cfg(feature = "rtlsdr")]
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(transparent)]
-pub struct RtlSdrPath {
-    #[serde(flatten)]
-    pub config: RtlSdrDeviceConfig,
-}
-
-/// RTL-SDR device configuration fields
-#[cfg(feature = "rtlsdr")]
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct RtlSdrDeviceConfig {
-    /// Device index (0, 1, 2, ...)
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub device: Option<usize>,
-    /// Serial number filter
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub serial: Option<String>,
-    /// Manufacturer filter
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub manufacturer: Option<String>,
-    /// Product filter
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub product: Option<String>,
-}
-
-/// SoapySDR device configuration for TOML (transparent string)
-#[cfg(feature = "soapy")]
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(transparent)]
-pub struct SoapyPath {
-    /// SoapySDR driver arguments (e.g., "driver=rtlsdr")
-    pub soapy: String,
-}
-
-/// Structured Airspy device configuration for TOML
-#[cfg(feature = "airspy")]
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(transparent)]
-pub struct AirspyPath {
-    #[serde(flatten)]
-    pub config: AirspyDeviceConfig,
-}
-
-/// Airspy device configuration fields
-#[cfg(feature = "airspy")]
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct AirspyDeviceConfig {
-    /// Device index (0, 1, 2, ...)
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub device: Option<usize>,
-    /// Serial number selector (e.g. "0x35AC63DC2D8C7A4F")
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub serial: Option<String>,
-    /// LNA gain (0-14); use instead of source-level `gain` for fine control
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub lna_gain: Option<u8>,
-    /// Mixer gain (0-15); use instead of source-level `gain` for fine control
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub mixer_gain: Option<u8>,
-    /// VGA gain (0-15); use instead of source-level `gain` for fine control
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub vga_gain: Option<u8>,
-}
-
-/// Structured HackRF device configuration for TOML
-#[cfg(feature = "hackrf")]
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(transparent)]
-pub struct HackrfPath {
-    #[serde(flatten)]
-    pub config: HackrfDeviceConfig,
-}
-
-/// HackRF device configuration fields
-#[cfg(feature = "hackrf")]
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct HackrfDeviceConfig {
-    /// Device index (0, 1, 2, ...)
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub device: Option<usize>,
-    /// Enable RF amplifier (+14 dB before LNA, default: true)
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub amp_enable: Option<bool>,
-    /// LNA gain in dB (0-40, 8 dB steps); use instead of source-level `gain`
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub lna_gain: Option<u32>,
-    /// VGA gain in dB (0-62, 2 dB steps); use instead of source-level `gain`
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub vga_gain: Option<u32>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -300,19 +214,6 @@ impl<'de> Deserialize<'de> for Source {
     }
 }
 
-#[cfg(feature = "airspy")]
-pub fn parse_airspy_serial(value: &str) -> Result<u64, String> {
-    if let Some(hex) = value.strip_prefix("0x") {
-        return u64::from_str_radix(hex, 16)
-            .map_err(|_| format!("Invalid Airspy serial (hex): '{value}'"));
-    }
-
-    value
-        .parse::<u64>()
-        .or_else(|_| u64::from_str_radix(value, 16))
-        .map_err(|_| format!("Invalid Airspy serial: '{value}'"))
-}
-
 impl FromStr for Source {
     type Err = String;
 
@@ -409,6 +310,7 @@ impl FromStr for Source {
                         amp_enable: None,
                         lna_gain: None,
                         vga_gain: None,
+                        freq_offset_hz: None,
                     }
                 } else if let Ok(idx) = device_str.parse::<usize>() {
                     HackrfDeviceConfig {
@@ -416,6 +318,7 @@ impl FromStr for Source {
                         amp_enable: None,
                         lna_gain: None,
                         vga_gain: None,
+                        freq_offset_hz: None,
                     }
                 } else {
                     eprintln!(
@@ -429,6 +332,7 @@ impl FromStr for Source {
                         amp_enable: None,
                         lna_gain: None,
                         vga_gain: None,
+                        freq_offset_hz: None,
                     }
                 };
                 Address::Hackrf(HackrfPath { config })

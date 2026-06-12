@@ -102,7 +102,7 @@ See [`config.toml.example`](config.toml.example) for the full reference with all
 
 ### SDR hardware
 
-All SDR sources accept `gain`, `sample_rate`, and `bias_tee` at the source level:
+All SDR sources accept `gain`, `sample_rate`, and `bias_tee` at the source level. If `gain` is omitted, ship162 applies its AIS per-device default; `gain = "auto"` explicitly requests device automatic gain control where supported:
 
 ```toml
 # RTL-SDR (default gain 49.6 dB)

@@ -136,8 +136,9 @@ mqtt = "mqtt://mqtt.digitraffic.fi"
 #
 # All SDR sources share the top-level `gain` field:
 #
+#   # omitted          # Use ship162's per-device AIS default
 #   gain = 49.6        # Manual gain in dB
-#   gain = "auto"      # Automatic gain control (Airspy, HackRF)
+#   gain = "auto"      # Explicit automatic gain control where supported
 #
 # Recommended defaults per device:
 #   RTL-SDR:  49.6 dB (maximum, best for AIS at 162 MHz)
