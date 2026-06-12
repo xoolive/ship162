@@ -80,6 +80,9 @@ jobs:
           echo "x86_64=${X86_SHA}" >> "$GITHUB_OUTPUT"
           echo "aarch64=${ARM_SHA}" >> "$GITHUB_OUTPUT"
 
+      - name: Clone AUR repo
+        run: git clone https://aur.archlinux.org/ship162-bin.git aur/ship162-bin
+
       - name: Generate PKGBUILD
         run: |
           VERSION="${{ steps.version.outputs.version }}"
