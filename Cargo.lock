@@ -2905,7 +2905,7 @@ dependencies = [
 
 [[package]]
 name = "rs162"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
  "async-recursion",
  "deku",
@@ -3138,7 +3138,7 @@ dependencies = [
 
 [[package]]
 name = "ship162"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
  "anyhow",
  "clap",
