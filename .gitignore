@@ -1,3 +1,11 @@
+# Produced by cargo build
 /target
+# Produced by nix
+result
+# Documentation and reference samples
+/references
+/samples
 # agent plan must remain private
 /plan.md
+# ignore all analysis Markdown files
+analysis/
