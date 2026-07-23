@@ -1,6 +1,6 @@
+use anyhow::Result;
 use rs162::sources::mqtt::MqttReceiver;
 use tokio::sync::mpsc::Sender;
-use tracing::info;
 
 use crate::sources::TimedMessage;
 
@@ -14,35 +14,24 @@ impl MqttSource {
         Self { tx, broker_url }
     }
 
-    pub async fn run(&self) -> anyhow::Result<()> {
-        loop {
-            match self.connect_and_process().await {
-                Ok(_) => {
-                    tracing::warn!("Connection closed, reconnecting...");
-                }
-                Err(e) => {
-                    tracing::warn!("Error: {}, reconnecting in 5 seconds...", e);
-                    tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
-                }
-            }
-        }
-    }
-
-    async fn connect_and_process(&self) -> anyhow::Result<()> {
+    pub async fn run(&self) -> Result<()> {
+        // TODO: this is a bug in f27b429, passing broker_url to client_id is wrong
+        // rs162 should allow configuring broker, tos and topic
         let mut source = MqttReceiver::new(&self.broker_url).await?;
 
-        info!("Connected to MQTT broker at {}", self.broker_url);
-        while let Some(msg) = source.next().await {
-            if let Ok(msg) = msg {
-                let sentence = super::TimedMessage {
-                    timestamp: msg.timestamp,
+        while let Some(message) = source.next().await {
+            let Ok(message) = message else {
+                continue;
+            };
+            self.tx
+                .send(TimedMessage {
+                    timestamp: message.timestamp,
                     signal_level: None,
-                    message: msg.message,
+                    message: message.message,
                     mmsi_info: None,
                     nmea_sentences: vec![],
-                };
-                self.tx.send(sentence).await?;
-            }
+                })
+                .await?;
         }
         Ok(())
     }

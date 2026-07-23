@@ -43,3 +43,4 @@ toml = "0.9.10"
 tracing-subscriber = { version = "0.3.23", features = ["env-filter"] }
 url = "2.5.7"
 tokio-tungstenite = "0.29"
+thiserror = "2"  # available in rs162
