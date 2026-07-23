@@ -23,10 +23,10 @@ impl WsSource {
         loop {
             match self.connect_and_process().await {
                 Ok(_) => {
-                    eprintln!("WebSocket connection closed, reconnecting...");
+                    tracing::warn!("WebSocket connection closed, reconnecting...");
                 }
                 Err(e) => {
-                    eprintln!("WebSocket error: {}, reconnecting in 5 seconds...", e);
+                    tracing::warn!("WebSocket error: {}, reconnecting in 5 seconds...", e);
                     tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
                 }
             }

@@ -33,7 +33,7 @@ impl Source {
                 }
             }
         }
-        println!("Stream returned None, exiting loop"); // Debug log
+        tracing::info!("source stream ended");
 
         Ok(())
     }

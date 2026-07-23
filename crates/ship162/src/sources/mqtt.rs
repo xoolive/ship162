@@ -18,10 +18,10 @@ impl MqttSource {
         loop {
             match self.connect_and_process().await {
                 Ok(_) => {
-                    eprintln!("Connection closed, reconnecting...");
+                    tracing::warn!("Connection closed, reconnecting...");
                 }
                 Err(e) => {
-                    eprintln!("Error: {}, reconnecting in 5 seconds...", e);
+                    tracing::warn!("Error: {}, reconnecting in 5 seconds...", e);
                     tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
                 }
             }

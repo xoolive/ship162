@@ -161,7 +161,7 @@ mqtt = "mqtt://mqtt.digitraffic.fi"
 
 ## Output
 
-Decoded messages are emitted as JSON on stdout (`--verbose`), written to a file (`--output`), or published to Redis (`--redis-url`). The application can also re-broadcast decoded NMEA sentences to downstream consumers:
+Decoded messages are emitted as JSON on stdout (`--verbose`), written to a file (`--output`), or published to Redis (`--redis-url`). Verbose and interactive modes are mutually exclusive because each requires stdout; `--log-file -` is likewise unavailable with either mode. The application can also re-broadcast decoded NMEA sentences to downstream consumers:
 
 ```sh
 # Serve NMEA over TCP for other applications (e.g. OpenCPN)

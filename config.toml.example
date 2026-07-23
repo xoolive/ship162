@@ -10,7 +10,7 @@
 # output = "/tmp/ais_messages.jsonl"
 
 # Logging configuration
-# log_file = "/tmp/ship162.log"  # Use "-" for stdout (only in non-interactive mode)
+# log_file = "/tmp/ship162.log"  # Use "-" for stdout only without verbose or interactive mode
 
 # Prevent computer from sleeping while decoding
 prevent_sleep = false
