@@ -314,7 +314,7 @@ impl TunnelledTcp {
         let target_client = connect_server(&self.jump, &params, CONNECTION_MAP.clone())
             .await
             .map_err(|e| {
-                let msg = format!("Could not connect to jump host {}: {}", &self.jump, e);
+                let msg = format!("Could not connect to jump host {}: {}", self.jump, e);
                 BoxError::from(msg)
             })?;
 
@@ -339,7 +339,7 @@ impl TunnelledWebsocket {
         let target_client = connect_server(&self.jump, &params, CONNECTION_MAP.clone())
             .await
             .map_err(|e| {
-                let msg = format!("Could not connect to jump host {}: {}", &self.jump, e);
+                let msg = format!("Could not connect to jump host {}: {}", self.jump, e);
                 BoxError::from(msg)
             })?;
 
