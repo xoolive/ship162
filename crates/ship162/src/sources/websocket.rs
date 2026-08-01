@@ -2,42 +2,32 @@ use anyhow::Result;
 use futures::StreamExt;
 use tokio::sync::mpsc::Sender;
 use tokio_tungstenite::connect_async;
-use tracing::{debug, info, warn};
+use tracing::debug;
 
 use rs162::decode::nmea::{MessageAssembler, NmeaAisMessage};
 use rs162::prelude::Message;
 
-use crate::sources::{TimedMessage, WsPath};
+use crate::{
+    sources::{TimedMessage, WsPath},
+    status::{ReconnectingSource, SourceRuntime, SourceStatus},
+};
 
 pub struct WsSource {
     tx: Sender<TimedMessage>,
+    runtime: SourceRuntime,
     path: WsPath,
 }
 
 impl WsSource {
-    pub fn new(tx: Sender<TimedMessage>, path: WsPath) -> Self {
-        Self { tx, path }
-    }
-
-    pub async fn run(&self) -> Result<()> {
-        loop {
-            match self.connect_and_process().await {
-                Ok(_) => {
-                    eprintln!("WebSocket connection closed, reconnecting...");
-                }
-                Err(e) => {
-                    eprintln!("WebSocket error: {}, reconnecting in 5 seconds...", e);
-                    tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
-                }
-            }
-        }
+    pub fn new(tx: Sender<TimedMessage>, runtime: SourceRuntime, path: WsPath) -> Self {
+        Self { tx, runtime, path }
     }
 
     async fn connect_and_process(&self) -> Result<()> {
         match &self.path {
             WsPath::Short(url) => {
                 let (ws_stream, _) = connect_async(url.as_str()).await?;
-                info!("Connected to WebSocket: {}", url);
+                self.runtime.report(SourceStatus::Connected);
                 let (_write, read) = ws_stream.split();
                 self.process_stream(read).await
             }
@@ -47,7 +37,7 @@ impl WsSource {
                     return self.connect_tunnelled(&ws.url, jump).await;
                 }
                 let (ws_stream, _) = connect_async(ws.url.as_str()).await?;
-                info!("Connected to WebSocket: {}", ws.url);
+                self.runtime.report(SourceStatus::Connected);
                 let (_write, read) = ws_stream.split();
                 self.process_stream(read).await
             }
@@ -76,8 +66,7 @@ impl WsSource {
             .connect()
             .await
             .map_err(|e| anyhow::anyhow!("{}", e))?;
-        info!("SSH tunnel established to {} via jump host {}", url, jump);
-
+        tracing::info!(url, jump, "ssh tunnel established");
         let request = Request::builder()
             .uri(url)
             .header("Host", parsed_url.host_str().unwrap_or("localhost"))
@@ -94,7 +83,7 @@ impl WsSource {
         let (ws_stream, _) = client_async(request, stream)
             .await
             .map_err(|e| anyhow::anyhow!("{}", e))?;
-        info!("Connected to WebSocket via tunnel: {}", url);
+        self.runtime.report(SourceStatus::Connected);
 
         let (_write, read) = ws_stream.split();
         self.process_stream(read).await
@@ -181,8 +170,17 @@ impl WsSource {
             }
         }
 
-        warn!("WebSocket stream ended");
         Ok(())
+    }
+}
+
+impl ReconnectingSource for WsSource {
+    fn runtime(&self) -> &SourceRuntime {
+        &self.runtime
+    }
+
+    async fn connect_once(&self) -> Result<()> {
+        self.connect_and_process().await
     }
 }
 

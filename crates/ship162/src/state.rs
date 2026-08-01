@@ -2,7 +2,9 @@ use rs162::{
     decode::mmsi::MmsiInfo,
     prelude::{NavigationStatus, ShipType},
 };
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
+
+use crate::status::{SourceEvent, SourceId};
 
 #[derive(Debug, Clone)]
 pub struct VesselState {
@@ -70,6 +72,7 @@ impl VesselState {
 pub struct AppState {
     vessels: HashMap<String, VesselState>,
     pub scroll_offset: usize,
+    source_statuses: BTreeMap<SourceId, SourceEvent>,
 }
 
 impl AppState {
@@ -95,6 +98,14 @@ impl AppState {
 
     pub fn vessel_count(&self) -> usize {
         self.vessels.len()
+    }
+
+    pub fn set_source_status(&mut self, status: SourceEvent) {
+        self.source_statuses.insert(status.source_id(), status);
+    }
+
+    pub fn source_statuses(&self) -> impl Iterator<Item = &SourceEvent> {
+        self.source_statuses.values()
     }
 
     pub fn scroll_up(&mut self) {

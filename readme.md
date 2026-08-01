@@ -134,6 +134,8 @@ gain = 49.6
 
 ### TCP
 
+TCP sources reconnect after a fixed five-second delay by default. Configure the delay per source with `retry`:
+
 ```toml
 [[sources]]
 tcp = "153.44.253.27:5631"
@@ -141,13 +143,19 @@ tcp = "153.44.253.27:5631"
 # With SSH tunnel (built-in, no openssh needed)
 [[sources]]
 tcp = { host = "remote-host", port = 5631, jump = "jumphost" }
+# optional
+retry = { strategy = "fixed", delay_seconds = 10 }
 ```
 
 ### WebSocket
 
+WebSocket sources also use the same fixed-delay retry policy by default:
+
 ```toml
 [[sources]]
 ws = "ws://remote-host:88888"
+# optional
+retry = { strategy = "fixed", delay_seconds = 10 }
 ```
 
 ### MQTT
@@ -161,7 +169,7 @@ mqtt = "mqtt://mqtt.digitraffic.fi"
 
 ## Output
 
-Decoded messages are emitted as JSON on stdout (`--verbose`), written to a file (`--output`), or published to Redis (`--redis-url`). The application can also re-broadcast decoded NMEA sentences to downstream consumers:
+Decoded messages are emitted as JSON on stdout (`--verbose`), written to a file (`--output`), or published to Redis (`--redis-url`). Verbose and interactive modes are mutually exclusive because each requires stdout; `--log-file -` is likewise unavailable with either mode. The application can also re-broadcast decoded NMEA sentences to downstream consumers:
 
 ```sh
 # Serve NMEA over TCP for other applications (e.g. OpenCPN)

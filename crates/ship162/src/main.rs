@@ -3,10 +3,11 @@
 mod outputs;
 mod sources;
 mod state;
+mod status;
 mod table;
 mod tui;
 
-use anyhow::Result;
+use anyhow::{Context, Result};
 use clap::Parser;
 use crossterm::event::{KeyCode, KeyModifiers};
 #[cfg(any(
@@ -26,9 +27,9 @@ use std::{path::PathBuf, sync::Arc};
 use tokio::{
     fs,
     io::AsyncWriteExt,
-    sync::{watch, Mutex},
+    sync::{mpsc, watch, Mutex},
 };
-use tracing::warn;
+use tracing::{error, warn};
 use tracing_subscriber::{fmt, prelude::*, EnvFilter};
 
 use crate::sources::iq::Source;
@@ -36,6 +37,7 @@ use crate::sources::iq::Source;
 use crate::sources::mqtt::MqttSource;
 use crate::sources::tcp::TcpSource;
 use crate::sources::websocket::WsSource;
+use crate::status::{ReconnectingSource, SourceEvent, SourceId, SourceRuntime};
 use crate::tui::{Event, EventHandler};
 use rs162::sources::AisAsyncIqSource;
 
@@ -63,7 +65,7 @@ struct Options {
     #[serde(default)]
     sources: Vec<sources::Source>,
 
-    /// logging file, use "-" for stdout (only in non-interactive mode)
+    /// Diagnostic log file. "-" writes to stdout and cannot be combined with interactive or verbose output.
     #[arg(short, long, value_name = "FILE")]
     log_file: Option<String>,
 
@@ -118,16 +120,20 @@ async fn main() -> Result<()> {
     cfg_path.push("config.toml");
 
     if cfg_path.exists() {
-        let string = fs::read_to_string(cfg_path).await.ok().unwrap();
-        options = toml::from_str(&string).unwrap();
+        let string = fs::read_to_string(&cfg_path)
+            .await
+            .with_context(|| format!("failed to read config {}", cfg_path.display()))?;
+        options = toml::from_str(&string)
+            .with_context(|| format!("invalid config {}", cfg_path.display()))?;
     }
 
     if let Ok(config_file) = std::env::var("SHIP162_CONFIG") {
         let path = expanduser(PathBuf::from(config_file));
-        let string = fs::read_to_string(path)
+        let string = fs::read_to_string(&path)
             .await
-            .expect("Configuration file not found");
-        options = toml::from_str(&string).unwrap();
+            .with_context(|| format!("failed to read config {}", path.display()))?;
+        options = toml::from_str(&string)
+            .with_context(|| format!("invalid config {}", path.display()))?;
     }
 
     let mut cli_options = Options::parse();
@@ -169,24 +175,44 @@ async fn main() -> Result<()> {
     }
     options.sources.append(&mut cli_options.sources);
 
+    if options.interactive && options.verbose {
+        anyhow::bail!(
+            "interactive mode cannot be combined with verbose JSON output because both use stdout"
+        );
+    }
+    if options.log_file.as_deref() == Some("-") {
+        if options.interactive {
+            anyhow::bail!(
+                r#"log_file = "-" cannot be used in interactive mode because stdout is reserved for the TUI"#
+            );
+        }
+        if options.verbose {
+            anyhow::bail!(
+                r#"log_file = "-" cannot be used with verbose JSON output because stdout is reserved for JSON"#
+            );
+        }
+    }
+
     // example: RUST_LOG=rs162=DEBUG
-    let env_filter = EnvFilter::from_default_env();
+    let env_filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("warn"));
 
     let subscriber = tracing_subscriber::registry().with(env_filter);
     match options.log_file.as_deref() {
-        Some("-") if !options.interactive => {
-            // when it's interactive, logs will disrupt the display
-            subscriber.with(fmt::layer().pretty()).init();
-        }
-        Some(log_file) if log_file != "-" => {
+        Some("-") => subscriber.with(fmt::layer().pretty()).init(),
+        Some(log_file) => {
             let file = std::fs::File::create(log_file)
-                .unwrap_or_else(|_| panic!("fail to create log file: {log_file}"));
-            let file_layer = fmt::layer().with_writer(file).with_ansi(false);
-            subscriber.with(file_layer).init();
+                .with_context(|| format!("failed to create log file {log_file}"))?;
+            subscriber
+                .with(fmt::layer().with_writer(file).with_ansi(false))
+                .init();
         }
-        _ => {
-            subscriber.init(); // no logging
+        None if options.interactive => {
+            // TODO: surface non-network source and output errors inside the TUI
+            subscriber.init();
         }
+        None => subscriber
+            .with(fmt::layer().with_writer(std::io::stderr))
+            .init(),
     }
 
     let mut redis_connect = match options
@@ -228,6 +254,14 @@ async fn main() -> Result<()> {
 
     // Create application state wrapped in Arc<Mutex<>> for sharing
     let state = Arc::new(Mutex::new(AppState::new()));
+    let (status_tx, mut status_rx) = mpsc::unbounded_channel::<SourceEvent>();
+    let status_state = state.clone();
+    let status_handle = tokio::spawn(async move {
+        while let Some(status) = status_rx.recv().await {
+            status.log();
+            status_state.lock().await.set_source_status(status);
+        }
+    });
 
     let (tx, mut rx) = tokio::sync::mpsc::channel(10);
     let (quit_tx, mut quit_rx) = watch::channel(false);
@@ -281,7 +315,7 @@ async fn main() -> Result<()> {
         let tx = nmea_tx.clone();
         tokio::spawn(async move {
             if let Err(e) = outputs::tcp::run_tcp_server(addr, shutdown, tx).await {
-                eprintln!("TCP output server error: {}", e);
+                error!("TCP output server error: {}", e);
             }
         });
     }
@@ -305,7 +339,7 @@ async fn main() -> Result<()> {
         let targets = udp_targets;
         tokio::spawn(async move {
             if let Err(e) = outputs::udp::run_udp_server(addr, targets, shutdown, rx).await {
-                eprintln!("UDP output server error: {}", e);
+                error!("UDP output server error: {}", e);
             }
         });
     }
@@ -316,7 +350,7 @@ async fn main() -> Result<()> {
         let tx = nmea_tx.clone();
         tokio::spawn(async move {
             if let Err(e) = outputs::websocket::run_websocket_server(addr, shutdown, tx).await {
-                eprintln!("WebSocket output server error: {}", e);
+                error!("WebSocket output server error: {}", e);
             }
         });
     }
@@ -325,72 +359,63 @@ async fn main() -> Result<()> {
         options.serve_tcp.is_some() || options.serve_udp.is_some() || options.serve_ws.is_some();
 
     let mut src_handles = vec![];
-    for source in options.sources {
+    for (source_index, source) in options.sources.into_iter().enumerate() {
+        let source_id = SourceId::from_index(source_index);
         let tcp_clone = tx.clone();
+        let source_status_tx = status_tx.clone();
         let mut shutdown_rx = shutdown_tx.subscribe();
-        let handle = match source.address {
-            sources::Address::Tcp(address) => tokio::spawn(async move {
-                match address {
-                    sources::AddressPath::Short(addr) => {
-                        let parts: Vec<&str> = addr.split(':').collect();
-                        if parts.len() != 2 {
-                            eprintln!("Invalid TCP address format: {}", addr);
-                            return;
-                        }
-                        let host = parts[0].to_string();
-                        let port = parts[1].parse::<u16>().unwrap_or_else(|_| {
-                            eprintln!("Invalid port number in address: {}", addr);
-                            0
-                        });
-                        if port == 0 {
-                            return;
-                        }
-                        let source = TcpSource::new(tcp_clone, host, port);
-                        tokio::select! {
-                            result = source.run() => {
-                                if let Err(e) = result {
-                                    eprintln!("TCP source error: {}", e);
-                                }
-                            }
-                            _ = shutdown_rx.recv() => {
-                                // Silent shutdown
-                            }
-                        }
+        let handle = match source {
+            sources::Source::Tcp(source_config) => tokio::spawn(async move {
+                let (host, port, jump) = match source_config.tcp {
+                    sources::AddressPath::Short(address) => {
+                        (address.host, address.port.get(), None)
                     }
-                    sources::AddressPath::Long(addr) => {
-                        let host = addr.host;
-                        let port = addr.port;
-                        #[cfg(feature = "ssh")]
-                        let source = if let Some(jump) = addr.jump {
-                            TcpSource::with_jump(tcp_clone, host, port, jump)
-                        } else {
-                            TcpSource::new(tcp_clone, host, port)
-                        };
-                        #[cfg(not(feature = "ssh"))]
-                        let source = TcpSource::new(tcp_clone, host, port);
+                    sources::AddressPath::Long(address) => {
+                        (address.host, address.port.get(), address.jump)
+                    }
+                };
+                let runtime = SourceRuntime::new(
+                    source_id,
+                    format!("tcp://{host}:{port}"),
+                    source_status_tx.clone(),
+                    source_config.retry,
+                );
+                #[cfg(feature = "ssh")]
+                let source = if let Some(jump) = jump {
+                    TcpSource::with_jump(tcp_clone, runtime, host, port, jump)
+                } else {
+                    TcpSource::new(tcp_clone, runtime, host, port)
+                };
+                #[cfg(not(feature = "ssh"))]
+                let source = {
+                    let _ = jump;
+                    TcpSource::new(tcp_clone, runtime, host, port)
+                };
 
-                        tokio::select! {
-                            result = source.run() => {
-                                if let Err(e) = result {
-                                    eprintln!("TCP source error: {}", e);
-                                }
-                            }
-                            _ = shutdown_rx.recv() => {
-                                // Silent shutdown
-                            }
-                        }
+                tokio::select! {
+                    _ = source.run() => {}
+                    _ = shutdown_rx.recv() => {
+                        // Silent shutdown
                     }
                 }
             }),
             #[cfg(feature = "mqtt")]
-            sources::Address::Mqtt(broker_url) => {
+            sources::Source::Mqtt(source_config) => {
                 let mqtt_clone = tx.clone();
                 tokio::spawn(async move {
-                    let source = MqttSource::new(mqtt_clone, broker_url);
+                    let client_id = source_config.mqtt;
+                    // TODO: split the legacy MQTT value into broker and client ID, then
+                    // expose paho connection callbacks before reporting lifecycle events in the TUI.
+                    let source = MqttSource::new(mqtt_clone, client_id.clone());
                     tokio::select! {
                         result = source.run() => {
-                            if let Err(e) = result {
-                                eprintln!("MQTT source error: {}", e);
+                            if let Err(error) = result {
+                                error!(
+                                    source_type = "mqtt",
+                                    client_id,
+                                    error = %error,
+                                    "MQTT source error"
+                                );
                             }
                         }
                         _ = shutdown_rx.recv() => {
@@ -400,15 +425,16 @@ async fn main() -> Result<()> {
                 })
             }
             #[cfg(feature = "rtlsdr")]
-            sources::Address::Rtlsdr(rtl_path) => {
+            sources::Source::RtlSdr(source_config) => {
                 use desperado::rtlsdr::DeviceSelector;
                 let rtl_clone = tx.clone();
+                let rtl_path = source_config.rtlsdr;
 
                 // Get gain and bias_tee from source config or use defaults
-                let gain = source
+                let gain = source_config
                     .gain
                     .unwrap_or(Gain::Manual(sources::AIS_RTLSDR_GAIN));
-                let bias_tee = source.bias_tee.unwrap_or(false);
+                let bias_tee = source_config.bias_tee.unwrap_or(false);
 
                 // Determine device selector based on config
                 let config = &rtl_path.config;
@@ -431,7 +457,7 @@ async fn main() -> Result<()> {
                 };
 
                 // Get sample rate from source config or use default 288 kHz
-                let sample_rate = source
+                let sample_rate = source_config
                     .sample_rate
                     .map(|r| r as u32)
                     .unwrap_or(AIS_SAMPLE_RATE_288K);
@@ -442,7 +468,7 @@ async fn main() -> Result<()> {
                     tokio::select! {
                         result = source.run() => {
                             if let Err(e) = result {
-                                eprintln!("RTL-SDR source error: {}", e);
+                                error!("RTL-SDR source error: {}", e);
                             }
                         }
                         _ = shutdown_rx.recv() => {
@@ -452,17 +478,18 @@ async fn main() -> Result<()> {
                 })
             }
             #[cfg(feature = "soapy")]
-            sources::Address::Soapy(soapy_path) => {
+            sources::Source::Soapy(source_config) => {
                 let soapy_clone = tx.clone();
+                let soapy_path = source_config.soapy;
                 let args = soapy_path.soapy.clone();
 
                 // Get configuration from source or use defaults
-                let gain = source
+                let gain = source_config
                     .gain
                     .unwrap_or(Gain::Manual(sources::AIS_RTLSDR_GAIN));
-                let bias_tee = source.bias_tee.unwrap_or(false);
+                let bias_tee = source_config.bias_tee.unwrap_or(false);
                 // Use specified sample rate or default to 288 kHz
-                let sample_rate = source
+                let sample_rate = source_config
                     .sample_rate
                     .map(|r| r as u32)
                     .unwrap_or(AIS_SAMPLE_RATE_288K);
@@ -474,7 +501,7 @@ async fn main() -> Result<()> {
                     tokio::select! {
                         result = source.run() => {
                             if let Err(e) = result {
-                                eprintln!("SoapySDR source error: {}", e);
+                                error!("SoapySDR source error: {}", e);
                             }
                         }
                         _ = shutdown_rx.recv() => {
@@ -484,10 +511,11 @@ async fn main() -> Result<()> {
                 })
             }
             #[cfg(feature = "airspy")]
-            sources::Address::Airspy(airspy_path) => {
+            sources::Source::Airspy(source_config) => {
                 use desperado::airspy::DeviceSelector as AirspyDeviceSelector;
 
                 let airspy_clone = tx.clone();
+                let airspy_path = source_config.airspy;
 
                 let config = &airspy_path.config;
                 let device = if let Some(idx) = config.device {
@@ -496,7 +524,7 @@ async fn main() -> Result<()> {
                     match sources::parse_airspy_serial(serial) {
                         Ok(value) => AirspyDeviceSelector::Serial(value),
                         Err(message) => {
-                            eprintln!("WARNING: {message}. Defaulting to Airspy device 0.");
+                            warn!("{message}. Defaulting to Airspy device 0.");
                             AirspyDeviceSelector::Index(0)
                         }
                     }
@@ -505,9 +533,12 @@ async fn main() -> Result<()> {
                 };
 
                 // Default: sensitivity gain 50 (0-100 percentage for Airspy sensitivity table)
-                let gain = source.gain.clone().unwrap_or(Gain::Manual(50.0));
-                let bias_tee = source.bias_tee.unwrap_or(false);
-                let sample_rate = source.sample_rate.map(|r| r as u32).unwrap_or(6_000_000);
+                let gain = source_config.gain.clone().unwrap_or(Gain::Manual(50.0));
+                let bias_tee = source_config.bias_tee.unwrap_or(false);
+                let sample_rate = source_config
+                    .sample_rate
+                    .map(|r| r as u32)
+                    .unwrap_or(6_000_000);
                 let lna_gain = config.lna_gain;
                 let mixer_gain = config.mixer_gain;
                 let vga_gain = config.vga_gain;
@@ -527,7 +558,7 @@ async fn main() -> Result<()> {
                     tokio::select! {
                         result = source.run() => {
                             if let Err(e) = result {
-                                eprintln!("Airspy source error: {}", e);
+                                error!("Airspy source error: {}", e);
                             }
                         }
                         _ = shutdown_rx.recv() => {
@@ -537,8 +568,9 @@ async fn main() -> Result<()> {
                 })
             }
             #[cfg(feature = "hackrf")]
-            sources::Address::Hackrf(hackrf_path) => {
+            sources::Source::HackRf(source_config) => {
                 let hackrf_clone = tx.clone();
+                let hackrf_path = source_config.hackrf;
 
                 let config = &hackrf_path.config;
                 let device_index = config.device.unwrap_or(0);
@@ -565,7 +597,7 @@ async fn main() -> Result<()> {
                         });
                     }
                     Gain::Elements(elements)
-                } else if let Some(g) = source.gain.clone() {
+                } else if let Some(g) = source_config.gain.clone() {
                     g
                 } else {
                     Gain::Elements(vec![
@@ -579,8 +611,8 @@ async fn main() -> Result<()> {
                         },
                     ])
                 };
-                let bias_tee = source.bias_tee.unwrap_or(false);
-                let sample_rate = source
+                let bias_tee = source_config.bias_tee.unwrap_or(false);
+                let sample_rate = source_config
                     .sample_rate
                     .map(|r| r as u32)
                     .unwrap_or(AIS_SAMPLE_RATE_288K);
@@ -598,7 +630,7 @@ async fn main() -> Result<()> {
                     tokio::select! {
                         result = source.run() => {
                             if let Err(e) = result {
-                                eprintln!("HackRF source error: {}", e);
+                                error!("HackRF source error: {}", e);
                             }
                         }
                         _ = shutdown_rx.recv() => {
@@ -607,8 +639,9 @@ async fn main() -> Result<()> {
                     }
                 })
             }
-            sources::Address::IqFile(file) => {
+            sources::Source::IqFile(source_config) => {
                 let file_clone = tx.clone();
+                let file = source_config.iqfile;
                 let source = AisAsyncIqSource::from_file(
                     &file,
                     AIS_SAMPLE_RATE_288K,
@@ -620,7 +653,7 @@ async fn main() -> Result<()> {
                     tokio::select! {
                         result = source.run() => {
                             if let Err(e) = result {
-                                eprintln!("IQ File source error: {}", e);
+                                error!("IQ File source error: {}", e);
                             }
                         }
                         _ = shutdown_rx.recv() => {
@@ -629,16 +662,27 @@ async fn main() -> Result<()> {
                     }
                 })
             }
-            sources::Address::Ws(ws_path) => {
+            sources::Source::WebSocket(source_config) => {
                 let ws_clone = tx.clone();
                 tokio::spawn(async move {
-                    let source = WsSource::new(ws_clone, ws_path);
+                    let ws_path = source_config.ws;
+                    let retry_policy = source_config.retry;
+                    let source_name = match &ws_path {
+                        sources::WsPath::Short(url) => url.as_str(),
+                        sources::WsPath::Long(ws) => ws.url.as_str(),
+                    };
+                    let source = WsSource::new(
+                        ws_clone,
+                        SourceRuntime::new(
+                            source_id,
+                            source_name,
+                            source_status_tx.clone(),
+                            retry_policy,
+                        ),
+                        ws_path,
+                    );
                     tokio::select! {
-                        result = source.run() => {
-                            if let Err(e) = result {
-                                eprintln!("WebSocket source error: {}", e);
-                            }
-                        }
+                        _ = source.run() => {}
                         _ = shutdown_rx.recv() => {
                             // Silent shutdown
                         }
@@ -808,6 +852,9 @@ async fn main() -> Result<()> {
     for handle in src_handles {
         let _ = tokio::time::timeout(timeout, handle).await;
     }
+
+    drop(status_tx);
+    let _ = tokio::time::timeout(timeout, status_handle).await;
 
     Ok(())
 }

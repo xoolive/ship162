@@ -18,7 +18,7 @@ pub fn render(frame: &mut Frame, state: &AppState) {
         .split(area);
 
     render_table(frame, chunks[0], state);
-    render_footer(frame, chunks[1]);
+    render_footer(frame, chunks[1], state);
 }
 
 fn render_table(frame: &mut Frame, area: Rect, state: &AppState) {
@@ -170,8 +170,29 @@ fn render_table(frame: &mut Frame, area: Rect, state: &AppState) {
     frame.render_widget(table, area);
 }
 
-fn render_footer(frame: &mut Frame, area: Rect) {
-    let text = " q: quit | j/k or ↓/↑: scroll | mouse wheel: scroll ";
+fn render_footer(frame: &mut Frame, area: Rect, state: &AppState) {
+    let controls = "q: quit | j/k or ↓/↑: scroll | mouse wheel: scroll";
+    let mut statuses = state
+        .source_statuses()
+        .map(ToString::to_string)
+        .collect::<Vec<_>>()
+        .join(" | ");
+    // crude cutoff to make space for the controls
+    let status_width = usize::from(area.width).saturating_sub(controls.chars().count() + 5);
+    if statuses.chars().count() > status_width {
+        statuses = statuses
+            .chars()
+            .take(status_width.saturating_sub(1))
+            .collect();
+        if status_width > 0 {
+            statuses.push('…');
+        }
+    }
+    let text = if statuses.is_empty() {
+        format!(" {controls} ")
+    } else {
+        format!(" {statuses} | {controls} ")
+    };
     let colors = TableColors::new(&tailwind::CYAN);
     let paragraph = Paragraph::new(text)
         .style(Style::new().fg(colors.row_fg).bg(colors.buffer_bg))
