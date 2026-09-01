@@ -68,7 +68,7 @@ fn render_table(frame: &mut Frame, area: Rect, state: &AppState) {
                 _ => colors.alt_row_color,
             };
             Row::new(vec![
-                format!("{}", vessel.mmsi),
+                vessel.mmsi.to_string(),
                 vessel
                     .mmsi_info
                     .as_ref()
