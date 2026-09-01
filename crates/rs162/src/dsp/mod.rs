@@ -59,7 +59,9 @@ where
 /// Convert IQ samples from u8 format (RTL-SDR) to `Complex<f32>`
 pub fn convert_samples_cu8(samples: &[u8]) -> Vec<Complex<f32>> {
     samples
-        .chunks_exact(2)
+        .as_chunks::<2>()
+        .0
+        .iter()
         .map(|chunk| {
             let i = (chunk[0] as f32 - 127.5) / 128.0;
             let q = (chunk[1] as f32 - 127.5) / 128.0;
@@ -71,7 +73,9 @@ pub fn convert_samples_cu8(samples: &[u8]) -> Vec<Complex<f32>> {
 /// Convert IQ samples from i8 format to `Complex<f32>`
 pub fn convert_samples_cs8(samples: &[i8]) -> Vec<Complex<f32>> {
     samples
-        .chunks_exact(2)
+        .as_chunks::<2>()
+        .0
+        .iter()
         .map(|chunk| {
             let i = chunk[0] as f32 / 128.0;
             let q = chunk[1] as f32 / 128.0;
@@ -83,7 +87,9 @@ pub fn convert_samples_cs8(samples: &[i8]) -> Vec<Complex<f32>> {
 /// Convert IQ samples from i16 format to `Complex<f32>`
 pub fn convert_samples_cs16(samples: &[i16]) -> Vec<Complex<f32>> {
     samples
-        .chunks_exact(2)
+        .as_chunks::<2>()
+        .0
+        .iter()
         .map(|chunk| {
             let i = chunk[0] as f32 / 32768.0;
             let q = chunk[1] as f32 / 32768.0;
@@ -95,7 +101,9 @@ pub fn convert_samples_cs16(samples: &[i16]) -> Vec<Complex<f32>> {
 /// Convert IQ samples from f32 (GQRX) format to `Complex<f32>`
 pub fn convert_samples_cf32(samples: &[f32]) -> Vec<Complex<f32>> {
     samples
-        .chunks_exact(2)
+        .as_chunks::<2>()
+        .0
+        .iter()
         .map(|chunk| Complex::new(chunk[0], chunk[1]))
         .collect()
 }
