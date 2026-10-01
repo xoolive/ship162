@@ -1019,7 +1019,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0a5eca4e77dafb9389d12160b079e99e5b018ff0914e09efc0b74e6e3a7657bb"
 dependencies = [
  "biquad",
- "dirs",
+ "dirs 6.0.0",
  "futures",
  "num-complex",
  "rs-hackrf",
@@ -1060,6 +1060,15 @@ name = "dirs"
 version = "6.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c3e8aa94d75141228480295a7d0e7feb620b1a5ad9f12bc40be62411e38cce4e"
+dependencies = [
+ "dirs-sys",
+]
+
+[[package]]
+name = "dirs"
+version = "7.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8d57d423b3c82e89b9a24ca3091fee61f456a26edbd28d26c65906f4bc1dcd8f"
 dependencies = [
  "dirs-sys",
 ]
@@ -3055,7 +3064,7 @@ dependencies = [
  "async-recursion",
  "deku",
  "desperado",
- "dirs",
+ "dirs 7.0.0",
  "futures",
  "makiko",
  "num-complex",
@@ -3289,7 +3298,7 @@ dependencies = [
  "clap",
  "crossterm",
  "desperado",
- "dirs",
+ "dirs 7.0.0",
  "dotenv",
  "futures",
  "keepawake",
@@ -3426,7 +3435,7 @@ checksum = "a2e5a3352c5c624ed815d37c1c4c760aeaa119352091ca93ca5566f4ad48562c"
 dependencies = [
  "anyhow",
  "bitflags 2.13.0",
- "dirs",
+ "dirs 6.0.0",
  "git2",
  "glob",
  "log",
@@ -3536,7 +3545,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "32497e9a4c7b38532efcdebeef879707aa9f794296a4f0244f6f69e9bc8574bd"
 dependencies = [
  "fastrand",
- "getrandom 0.3.4",
+ "getrandom 0.4.3",
  "once_cell",
  "rustix",
  "windows-sys 0.61.2",
