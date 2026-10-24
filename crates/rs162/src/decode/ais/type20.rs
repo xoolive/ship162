@@ -7,8 +7,10 @@ use super::converters::*;
 fn read_optional_u16<R: std::io::Read + std::io::Seek>(
     bits: usize,
 ) -> impl Fn(&mut Reader<R>) -> Result<Option<u16>, DekuError> {
-    move |reader: &mut Reader<R>| match u16::from_reader_with_ctx(reader, deku::ctx::BitSize(bits))
-    {
+    move |reader: &mut Reader<R>| match u16::from_reader_with_ctx(
+        reader,
+        (deku::ctx::Endian::Big, deku::ctx::BitSize(bits)),
+    ) {
         Ok(value) => Ok(Some(value)),
         Err(DekuError::Incomplete(_)) => Ok(None),
         Err(e) => Err(e),
@@ -18,7 +20,10 @@ fn read_optional_u16<R: std::io::Read + std::io::Seek>(
 fn read_optional_u8<R: std::io::Read + std::io::Seek>(
     bits: usize,
 ) -> impl Fn(&mut Reader<R>) -> Result<Option<u8>, DekuError> {
-    move |reader: &mut Reader<R>| match u8::from_reader_with_ctx(reader, deku::ctx::BitSize(bits)) {
+    move |reader: &mut Reader<R>| match u8::from_reader_with_ctx(
+        reader,
+        (deku::ctx::Endian::Big, deku::ctx::BitSize(bits)),
+    ) {
         Ok(value) => Ok(Some(value)),
         Err(DekuError::Incomplete(_)) => Ok(None),
         Err(e) => Err(e),
