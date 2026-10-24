@@ -24,7 +24,7 @@ mqtt = ["rs162/mqtt"]
 ssh = ["rs162/ssh"]
 
 [dependencies]
-rs162 = { version = "0.1.5", path = "../rs162" }
+rs162 = { version = "0.2.0", path = "../rs162" }
 anyhow = "1.0"
 chrono = { version = "0.4", default-features = false, features = ["clock"] }
 clap = { version = "4.6.1", features = ["color", "derive", "wrap_help", "env"] }
