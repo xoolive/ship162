@@ -495,14 +495,22 @@ impl AisDemodulator {
 impl AisDemodulatedMessage {
     /// Validate the AIS message structure and content.
     ///
-    /// Checks the message type, length, and structure according to AIS protocol rules.
+    /// Checks the message type, length, and numeric sender MMSI range. A valid
+    /// frame CRC does not guarantee a semantically valid AIS identity. Leading
+    /// zeroes in coast/group identities are valid; country lookup is not required.
     /// Returns true if the message is valid and can be processed further.
     pub fn validate(&self) -> bool {
         // Message length in bits (excluding FCS)
         let bit_len = self.bits.len() * 8;
 
-        if bit_len == 0 {
-            return true;
+        // The common header contains 6 type bits, 2 repeat bits and a 30-bit MMSI.
+        if bit_len < 38 {
+            return false;
+        }
+        let mmsi =
+            u32::from_be_bytes([self.bits[1], self.bits[2], self.bits[3], self.bits[4]]) >> 2;
+        if !(1..=999_999_999).contains(&mmsi) {
+            return false;
         }
 
         // Message type: first 6 bits (MSB first in first byte)
@@ -590,7 +598,10 @@ impl AisDemodulatedMessage {
     }
 
     pub fn decode(&self) -> Option<Message> {
-        if self.bits.len() < 14 {
+        // Only the common 38-bit header is universal. Some complete messages
+        // (e.g. type 20) are shorter than 14 bytes; the typed reader validates
+        // the fields required by each message type.
+        if self.bits.len() < 5 {
             return None;
         }
         let cursor = Cursor::new(&self.bits);
@@ -640,6 +651,141 @@ mod tests {
     use crate::prelude::Message;
 
     use super::*;
+
+    fn message_with_mmsi(mmsi: u32) -> AisDemodulatedMessage {
+        let mut bits = vec![0; 21];
+        bits[0] = 1 << 2; // A complete type-1 position report.
+        bits[1..5].copy_from_slice(&(mmsi << 2).to_be_bytes());
+        AisDemodulatedMessage {
+            bits,
+            signal_level: 1.0,
+            channel: 'A',
+            timestamp: 0.0,
+            nmea_sentences: vec![],
+        }
+    }
+
+    #[test]
+    fn validates_numeric_identity_without_country_or_station_type_policy() {
+        for mmsi in [1, 2_270_001, 4_128_215, 477_996_922, 999_999_999] {
+            assert!(
+                message_with_mmsi(mmsi).validate(),
+                "rejected numeric MMSI {mmsi}"
+            );
+        }
+        for mmsi in [0, 1_000_000_000, 0x3fff_ffff] {
+            assert!(
+                !message_with_mmsi(mmsi).validate(),
+                "accepted invalid MMSI {mmsi}"
+            );
+        }
+        for length in 0..5 {
+            let mut message = message_with_mmsi(477_996_922);
+            message.bits.truncate(length);
+            assert!(!message.validate());
+        }
+    }
+
+    fn decode_wire_frame(frame: &[u8]) -> Vec<AisDemodulatedMessage> {
+        // Enter after the start flag: exercise de-stuffing, CRC and semantic
+        // validation without relying on hardware, sample timing or RF fixtures.
+        let mut demodulator = AisDemodulator::new();
+        demodulator.decoder_states_a[0].state = State::DataFcs;
+        demodulator.decoder_states_a[0].prev_d = 0;
+        let mut bits = Vec::new();
+        let mut ones = 0;
+        for byte in frame {
+            for shift in 0..8 {
+                let bit = (byte >> shift) & 1;
+                bits.push(bit);
+                ones = if bit == 1 { ones + 1 } else { 0 };
+                if ones == 5 {
+                    bits.push(0);
+                    ones = 0;
+                }
+            }
+        }
+        bits.extend([0, 1, 1, 1, 1, 1, 1, 0]); // HDLC end flag.
+        let mut level = 0_u8;
+        let symbols = bits
+            .into_iter()
+            .map(|bit| {
+                if bit == 0 {
+                    level ^= 1;
+                }
+                if level == 1 {
+                    1.0
+                } else {
+                    -1.0
+                }
+            })
+            .collect::<Vec<_>>();
+        demodulator.decode_ais_message_stateful(&symbols, 'A', 0, &mut Tag::default())
+    }
+
+    #[test]
+    fn rejects_crc_valid_all_ones_mmsi_from_reported_capture() {
+        let frame = [
+            0x04, 0xff, 0xff, 0xff, 0xff, 0xc0, 0x3f, 0xf0, 0x04, 0x93, 0xe1, 0xad, 0x9c, 0x18,
+            0x3e, 0x13, 0xb4, 0x24, 0xc1, 0x02, 0xc3, 0xfa, 0x08,
+        ];
+        assert_eq!(AisDemodulator::crc16(&frame), EXPECTED_CRC);
+        assert!(decode_wire_frame(&frame).is_empty());
+    }
+
+    #[test]
+    fn preserves_valid_frames_and_still_rejects_bad_crc() {
+        let message = message_with_mmsi(477_996_922);
+        let mut frame = message.bits.clone();
+        let fcs = !AisDemodulator::crc16(&frame);
+        frame.extend_from_slice(&fcs.to_le_bytes());
+        let decoded = decode_wire_frame(&frame);
+        assert_eq!(decoded.len(), 1);
+        assert_eq!(decoded[0].bits, message.bits);
+        *frame.last_mut().unwrap() ^= 1;
+        assert!(decode_wire_frame(&frame).is_empty());
+    }
+
+    #[test]
+    fn short_type20_frame_preserves_its_leading_zero_coast_identity() {
+        let message = AisDemodulatedMessage {
+            bits: vec![
+                0x50, 0x00, 0xfb, 0xf7, 0x5c, 0x25, 0x01, 0xeb, 0xb8, 0xf6, 0x87, 0xae, 0xe0,
+            ],
+            signal_level: 1.0,
+            channel: 'B',
+            timestamp: 0.0,
+            nmea_sentences: vec![],
+        };
+        assert!(message.validate());
+        let decoded = message
+            .decode()
+            .expect("valid short AIS messages must not be discarded");
+        assert_eq!(decoded.mmsi(), 4_128_215); // 004128215, not a seven-digit ship MMSI.
+        let Message::DataLinkManagementMessage(slots) = decoded else {
+            panic!("expected a type-20 message");
+        };
+        assert_eq!(
+            (
+                slots.offset1,
+                slots.number1,
+                slots.timeout1,
+                slots.increment1
+            ),
+            (592, 1, 7, 750)
+        );
+        assert_eq!(
+            (
+                slots.offset2,
+                slots.number2,
+                slots.timeout2,
+                slots.increment2
+            ),
+            (Some(986), Some(1), Some(7), Some(750))
+        );
+        assert_eq!(slots.offset3, None);
+        assert_eq!(slots.offset4, None);
+    }
 
     #[test]
     fn test_encode_nmea() {

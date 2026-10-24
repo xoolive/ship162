@@ -99,6 +99,11 @@ impl MmsiInfo {
     }
 
     pub fn from_mmsi(mmsi_num: u32) -> Result<Self, String> {
+        if !(1..=999_999_999).contains(&mmsi_num) {
+            return Err(format!(
+                "Invalid MMSI {mmsi_num}: expected a nonzero identity of at most nine digits"
+            ));
+        }
         let mmsi_str = format!("{:09}", mmsi_num);
 
         // Extract prefixes
@@ -180,6 +185,19 @@ impl MmsiInfo {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn rejects_out_of_range_identities_before_mid_lookup() {
+        for mmsi in [0, 1_000_000_000, 0x3fff_ffff, 2_270_000_001, u32::MAX] {
+            assert!(
+                MmsiInfo::from_mmsi(mmsi).is_err(),
+                "accepted out-of-range MMSI {mmsi}"
+            );
+        }
+        // The integer representation omits leading zeroes in coast identities.
+        let coast = MmsiInfo::from_mmsi(4_128_215).unwrap();
+        assert_eq!(coast.mmsi_type, MmsiType::CoastStation);
+    }
 
     #[test]
     fn test_validate_mmsi_various_formats() {

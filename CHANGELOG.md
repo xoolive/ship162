@@ -4,6 +4,9 @@
 
 ### Fixed
 
+- Reject zero and out-of-range sender MMSIs in CRC-valid IQ frames, and check numeric range before MMSI country lookup.
+- Decode valid AIS messages shorter than 14 bytes, preserving leading-zero coast-station identities; read optional type-20 slot fields in big-endian order.
+
 - Upgrade Desperado and its SDR drivers to 0.5.1.
 - Fix HackRF-only builds and skip RTL-SDR examples when their feature is disabled.
 - Replace the SSH recursion macro with an explicitly boxed recursive call, avoiding Clippy 1.99's generated `double_must_use` error.
