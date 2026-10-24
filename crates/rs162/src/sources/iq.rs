@@ -13,7 +13,12 @@ use tokio::sync::mpsc;
 
 #[cfg(any(feature = "rtlsdr", feature = "soapy", feature = "hackrf"))]
 use desperado::DeviceConfig;
-#[cfg(any(feature = "rtlsdr", feature = "soapy", feature = "airspy"))]
+#[cfg(any(
+    feature = "rtlsdr",
+    feature = "soapy",
+    feature = "airspy",
+    feature = "hackrf"
+))]
 use desperado::Gain;
 
 #[cfg(feature = "airspy")]
@@ -166,6 +171,12 @@ impl AisAsyncIqSource {
         rx: mpsc::Receiver<Result<AisDemodulatedMessage>>,
     ) -> Self {
         Self { handle, rx }
+    }
+
+    /// Close the consumer and wait for the demodulator to stop its IQ source.
+    pub async fn stop(&mut self) -> std::result::Result<(), tokio::task::JoinError> {
+        self.rx.close();
+        (&mut self.handle).await
     }
 
     pub fn from_file<P: AsRef<Path>>(
@@ -340,24 +351,83 @@ pub fn spawn_demodulator_task(
         let mut adapter = SampleRateAdapter::new(sample_rate);
         let mut demodulator = AisDemodulator::new();
 
-        loop {
-            match source.next().await {
+        'read: loop {
+            // Closing the AIS consumer must also wake an idle/stalled IQ reader.
+            let chunk = tokio::select! {
+                biased;
+                _ = tx.closed() => break,
+                chunk = source.next() => chunk,
+            };
+            match chunk {
                 Some(Ok(samples)) => {
                     // Convert to 96 kHz using adapter
                     let samples_96k = adapter.process(&samples);
                     let messages = demodulator.demodulate(&samples_96k);
                     for msg in messages {
                         if tx.send(Ok(msg)).await.is_err() {
-                            return;
+                            break 'read;
                         }
                     }
                 }
                 Some(Err(e)) => {
                     let _ = tx.send(Err(e)).await;
-                    return;
+                    break;
                 }
-                None => return,
+                None => break,
+            }
+        }
+        // File/stdin/TCP readers have no background hardware workers to join.
+        if !matches!(
+            source,
+            IqAsyncSource::IqAsyncFile(_)
+                | IqAsyncSource::IqAsyncZstdFile(_)
+                | IqAsyncSource::IqAsyncStdin(_)
+                | IqAsyncSource::IqAsyncTcp(_)
+        ) {
+            if let Err(error) = source.stop().await {
+                tracing::warn!(%error, "Unable to stop IQ source cleanly");
             }
         }
     })
+}
+
+#[cfg(test)]
+mod shutdown_tests {
+    use super::*;
+    use std::time::Duration;
+    use tokio::net::TcpListener;
+    use tokio::time::timeout;
+
+    #[tokio::test]
+    async fn explicit_stop_joins_an_idle_iq_reader() {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let mut source = AisAsyncIqSource::from_tcp("127.0.0.1", port, 288_000, IqFormat::Cu8)
+            .await
+            .unwrap();
+        let (_connection, _) = listener.accept().await.unwrap();
+        timeout(Duration::from_secs(2), source.stop())
+            .await
+            .expect("stop must wake an idle reader")
+            .unwrap();
+        assert!(source.handle.is_finished());
+    }
+
+    #[tokio::test]
+    async fn dropping_consumer_wakes_demodulator_without_iq_samples() {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let source =
+            IqAsyncSource::from_tcp("127.0.0.1", port, AIS_FREQ, 288_000, 1024, IqFormat::Cu8)
+                .await
+                .unwrap();
+        let (_connection, _) = listener.accept().await.unwrap();
+        let (tx, rx) = mpsc::channel(1);
+        let handle = spawn_demodulator_task(source, tx, 288_000);
+        drop(rx);
+        timeout(Duration::from_secs(2), handle)
+            .await
+            .expect("a dropped consumer must wake an idle reader")
+            .unwrap();
+    }
 }

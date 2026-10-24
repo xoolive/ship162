@@ -1,5 +1,6 @@
 #![doc = include_str!("../readme.md")]
 
+mod diagnostics;
 mod outputs;
 mod sources;
 mod state;
@@ -32,12 +33,12 @@ use tokio::{
 use tracing::{error, warn};
 use tracing_subscriber::{fmt, prelude::*, EnvFilter};
 
-use crate::sources::iq::Source;
+use crate::sources::iq::supervise;
 #[cfg(feature = "mqtt")]
 use crate::sources::mqtt::MqttSource;
 use crate::sources::tcp::TcpSource;
 use crate::sources::websocket::WsSource;
-use crate::status::{ReconnectingSource, SourceEvent, SourceId, SourceRuntime};
+use crate::status::{ReconnectingSource, RetryPolicy, SourceEvent, SourceId, SourceRuntime};
 use crate::tui::{Event, EventHandler};
 use rs162::sources::AisAsyncIqSource;
 
@@ -193,10 +194,15 @@ async fn main() -> Result<()> {
         }
     }
 
+    validate_sources(&options.sources)?;
+
     // example: RUST_LOG=rs162=DEBUG
     let env_filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("warn"));
 
-    let subscriber = tracing_subscriber::registry().with(env_filter);
+    let diagnostics = diagnostics::new_diagnostics();
+    let subscriber = tracing_subscriber::registry()
+        .with(diagnostics::UiEventLayer::new(diagnostics.clone()))
+        .with(env_filter);
     match options.log_file.as_deref() {
         Some("-") => subscriber.with(fmt::layer().pretty()).init(),
         Some(log_file) => {
@@ -207,7 +213,8 @@ async fn main() -> Result<()> {
                 .init();
         }
         None if options.interactive => {
-            // TODO: surface non-network source and output errors inside the TUI
+            // Source diagnostics are displayed by the status panel. Output
+            // errors are returned after cleanup; a log file captures details.
             subscriber.init();
         }
         None => subscriber
@@ -245,6 +252,20 @@ async fn main() -> Result<()> {
         false => None,
     };
 
+    // Fail output setup before starting readers or taking over the terminal.
+    let mut file = if let Some(output_path) = options.output {
+        let output_path = expanduser(PathBuf::from(output_path));
+        Some(
+            fs::OpenOptions::new()
+                .append(true)
+                .create(true)
+                .open(output_path)
+                .await?,
+        )
+    } else {
+        None
+    };
+
     // Initialize terminal if interactive mode
     let terminal = if options.interactive {
         Some(tui::init()?)
@@ -253,7 +274,11 @@ async fn main() -> Result<()> {
     };
 
     // Create application state wrapped in Arc<Mutex<>> for sharing
-    let state = Arc::new(Mutex::new(AppState::new()));
+    // Register all configured sources before any task can connect or the UI
+    // can render. A quiet/failed source must never disappear from the count.
+    let mut initial_state = initial_source_state(&options.sources);
+    initial_state.diagnostics = diagnostics.clone();
+    let state = Arc::new(Mutex::new(initial_state));
     let (status_tx, mut status_rx) = mpsc::unbounded_channel::<SourceEvent>();
     let status_state = state.clone();
     let status_handle = tokio::spawn(async move {
@@ -268,7 +293,8 @@ async fn main() -> Result<()> {
     // Add a shutdown signal channel
     let (shutdown_tx, _shutdown_rx) = tokio::sync::broadcast::channel::<()>(1);
 
-    if terminal.is_some() {
+    // Headless receivers need the same graceful hardware shutdown as the TUI.
+    {
         let quit_tx_signal = quit_tx.clone();
         let shutdown_tx_signal = shutdown_tx.clone();
 
@@ -288,7 +314,6 @@ async fn main() -> Result<()> {
                 _ = sighup.recv() => {},
             }
 
-            tui::restore().ok();
             let _ = quit_tx_signal.send(true);
             let _ = shutdown_tx_signal.send(());
         });
@@ -299,7 +324,6 @@ async fn main() -> Result<()> {
                 .await
                 .expect("Failed to listen for Ctrl+C");
 
-            tui::restore().ok();
             let _ = quit_tx_signal.send(true);
             let _ = shutdown_tx_signal.send(());
         });
@@ -404,24 +428,18 @@ async fn main() -> Result<()> {
                 let mqtt_clone = tx.clone();
                 tokio::spawn(async move {
                     let client_id = source_config.mqtt;
-                    // TODO: split the legacy MQTT value into broker and client ID, then
-                    // expose paho connection callbacks before reporting lifecycle events in the TUI.
-                    let source = MqttSource::new(mqtt_clone, client_id.clone());
+                    let runtime = SourceRuntime::new(
+                        source_id,
+                        format!("mqtt: {client_id}"),
+                        source_status_tx,
+                        RetryPolicy::default(),
+                    );
+                    let source = MqttSource::new(mqtt_clone, client_id, runtime);
                     tokio::select! {
-                        result = source.run() => {
-                            if let Err(error) = result {
-                                error!(
-                                    source_type = "mqtt",
-                                    client_id,
-                                    error = %error,
-                                    "MQTT source error"
-                                );
-                            }
-                        }
-                        _ = shutdown_rx.recv() => {
-                            // Silent shutdown
-                        }
+                        _ = source.run() => {},
+                        _ = shutdown_rx.recv() => {},
                     }
+                    source.runtime().report(status::SourceStatus::Stopped);
                 })
             }
             #[cfg(feature = "rtlsdr")]
@@ -461,21 +479,26 @@ async fn main() -> Result<()> {
                     .sample_rate
                     .map(|r| r as u32)
                     .unwrap_or(AIS_SAMPLE_RATE_288K);
-                let ais_source =
-                    AisAsyncIqSource::from_rtlsdr(device, sample_rate, gain, bias_tee).await?;
-                tokio::spawn(async move {
-                    let mut source = Source::new(rtl_clone, ais_source);
-                    tokio::select! {
-                        result = source.run() => {
-                            if let Err(e) = result {
-                                error!("RTL-SDR source error: {}", e);
-                            }
-                        }
-                        _ = shutdown_rx.recv() => {
-                            // Silent shutdown
-                        }
-                    }
-                })
+                let runtime = SourceRuntime::new(
+                    source_id,
+                    format!("rtlsdr://{device:?}"),
+                    source_status_tx,
+                    RetryPolicy::default(),
+                );
+                tokio::spawn(supervise(
+                    rtl_clone,
+                    runtime,
+                    shutdown_rx,
+                    true,
+                    move || {
+                        AisAsyncIqSource::from_rtlsdr(
+                            device.clone(),
+                            sample_rate,
+                            gain.clone(),
+                            bias_tee,
+                        )
+                    },
+                ))
             }
             #[cfg(feature = "soapy")]
             sources::Source::Soapy(source_config) => {
@@ -494,21 +517,21 @@ async fn main() -> Result<()> {
                     .map(|r| r as u32)
                     .unwrap_or(AIS_SAMPLE_RATE_288K);
 
-                let ais_source =
-                    AisAsyncIqSource::from_soapy(&args, sample_rate, gain, bias_tee).await?;
-                tokio::spawn(async move {
-                    let mut source = Source::new(soapy_clone, ais_source);
-                    tokio::select! {
-                        result = source.run() => {
-                            if let Err(e) = result {
-                                error!("SoapySDR source error: {}", e);
-                            }
-                        }
-                        _ = shutdown_rx.recv() => {
-                            // Silent shutdown
-                        }
-                    }
-                })
+                let runtime = SourceRuntime::new(
+                    source_id,
+                    format!("soapy://{args}"),
+                    source_status_tx,
+                    RetryPolicy::default(),
+                );
+                tokio::spawn(supervise(
+                    soapy_clone,
+                    runtime,
+                    shutdown_rx,
+                    true,
+                    move || {
+                        AisAsyncIqSource::from_soapy(&args, sample_rate, gain.clone(), bias_tee)
+                    },
+                ))
             }
             #[cfg(feature = "airspy")]
             sources::Source::Airspy(source_config) => {
@@ -521,13 +544,9 @@ async fn main() -> Result<()> {
                 let device = if let Some(idx) = config.device {
                     AirspyDeviceSelector::Index(idx)
                 } else if let Some(ref serial) = config.serial {
-                    match sources::parse_airspy_serial(serial) {
-                        Ok(value) => AirspyDeviceSelector::Serial(value),
-                        Err(message) => {
-                            warn!("{message}. Defaulting to Airspy device 0.");
-                            AirspyDeviceSelector::Index(0)
-                        }
-                    }
+                    AirspyDeviceSelector::Serial(
+                        sources::parse_airspy_serial(serial).map_err(anyhow::Error::msg)?,
+                    )
                 } else {
                     AirspyDeviceSelector::Index(0)
                 };
@@ -543,29 +562,29 @@ async fn main() -> Result<()> {
                 let mixer_gain = config.mixer_gain;
                 let vga_gain = config.vga_gain;
 
-                let ais_source = AisAsyncIqSource::from_airspy(
-                    device,
-                    sample_rate,
-                    gain,
-                    bias_tee,
-                    lna_gain,
-                    mixer_gain,
-                    vga_gain,
-                )
-                .await?;
-                tokio::spawn(async move {
-                    let mut source = Source::new(airspy_clone, ais_source);
-                    tokio::select! {
-                        result = source.run() => {
-                            if let Err(e) = result {
-                                error!("Airspy source error: {}", e);
-                            }
-                        }
-                        _ = shutdown_rx.recv() => {
-                            // Silent shutdown
-                        }
-                    }
-                })
+                let runtime = SourceRuntime::new(
+                    source_id,
+                    format!("airspy://{device:?}"),
+                    source_status_tx,
+                    RetryPolicy::default(),
+                );
+                tokio::spawn(supervise(
+                    airspy_clone,
+                    runtime,
+                    shutdown_rx,
+                    true,
+                    move || {
+                        AisAsyncIqSource::from_airspy(
+                            device.clone(),
+                            sample_rate,
+                            gain.clone(),
+                            bias_tee,
+                            lna_gain,
+                            mixer_gain,
+                            vga_gain,
+                        )
+                    },
+                ))
             }
             #[cfg(feature = "hackrf")]
             sources::Source::HackRf(source_config) => {
@@ -617,50 +636,50 @@ async fn main() -> Result<()> {
                     .map(|r| r as u32)
                     .unwrap_or(AIS_SAMPLE_RATE_288K);
 
-                let ais_source = AisAsyncIqSource::from_hackrf(
-                    device_index,
-                    sample_rate,
-                    gain,
-                    amp_enable,
-                    bias_tee,
-                )
-                .await?;
-                tokio::spawn(async move {
-                    let mut source = Source::new(hackrf_clone, ais_source);
-                    tokio::select! {
-                        result = source.run() => {
-                            if let Err(e) = result {
-                                error!("HackRF source error: {}", e);
-                            }
-                        }
-                        _ = shutdown_rx.recv() => {
-                            // Silent shutdown
-                        }
-                    }
-                })
+                let runtime = SourceRuntime::new(
+                    source_id,
+                    format!("hackrf://{device_index}"),
+                    source_status_tx,
+                    RetryPolicy::default(),
+                );
+                tokio::spawn(supervise(
+                    hackrf_clone,
+                    runtime,
+                    shutdown_rx,
+                    true,
+                    move || {
+                        AisAsyncIqSource::from_hackrf(
+                            device_index,
+                            sample_rate,
+                            gain.clone(),
+                            amp_enable,
+                            bias_tee,
+                        )
+                    },
+                ))
             }
             sources::Source::IqFile(source_config) => {
                 let file_clone = tx.clone();
                 let file = source_config.iqfile;
-                let source = AisAsyncIqSource::from_file(
-                    &file,
-                    AIS_SAMPLE_RATE_288K,
-                    desperado::IqFormat::Cu8,
-                )
-                .await?;
-                tokio::spawn(async move {
-                    let mut source = Source::new(file_clone, source);
-                    tokio::select! {
-                        result = source.run() => {
-                            if let Err(e) = result {
-                                error!("IQ File source error: {}", e);
-                            }
-                        }
-                        _ = shutdown_rx.recv() => {
-                            // Silent shutdown
-                        }
-                    }
-                })
+                let runtime = SourceRuntime::new(
+                    source_id,
+                    format!("file://{file}"),
+                    source_status_tx,
+                    RetryPolicy::default(),
+                );
+                tokio::spawn(supervise(
+                    file_clone,
+                    runtime,
+                    shutdown_rx,
+                    false,
+                    move || {
+                        AisAsyncIqSource::from_file(
+                            file.clone(),
+                            AIS_SAMPLE_RATE_288K,
+                            desperado::IqFormat::Cu8,
+                        )
+                    },
+                ))
             }
             sources::Source::WebSocket(source_config) => {
                 let ws_clone = tx.clone();
@@ -693,6 +712,9 @@ async fn main() -> Result<()> {
         src_handles.push(handle);
     }
 
+    // Only the source tasks own senders now: all finite sources ending closes rx.
+    drop(tx);
+
     // Create event handler and UI task if in interactive mode
     let ui_handle = if let Some(mut terminal) = terminal {
         let size = terminal.size()?;
@@ -702,10 +724,12 @@ async fn main() -> Result<()> {
 
         Some(tokio::spawn(async move {
             loop {
-                // Lock state for rendering
-                let state_guard = terminal_state.lock().await;
-                terminal.draw(|frame| table::render(frame, &state_guard))?;
-                drop(state_guard); // Release lock before waiting for events
+                // Never hold the shared state lock during terminal I/O. If a
+                // writer is busy, handle input first and redraw on the next tick.
+                let snapshot = terminal_state.try_lock().ok().map(|state| state.clone());
+                if let Some(snapshot) = snapshot {
+                    terminal.draw(|frame| table::render(frame, &snapshot))?;
+                }
 
                 match events.next().await? {
                     Event::Key(key) => match key.code {
@@ -717,145 +741,206 @@ async fn main() -> Result<()> {
                             let _ = quit_tx_ui.send(true);
                             break;
                         }
-                        KeyCode::Char('j') | KeyCode::Down => {
-                            let max_visible = terminal.size()?.height.saturating_sub(5) as usize;
+                        KeyCode::Char('e') | KeyCode::Char('E') => {
                             let mut state_guard = terminal_state.lock().await;
-                            state_guard.scroll_down(max_visible);
+                            state_guard.show_errors = !state_guard.show_errors;
+                            state_guard.error_scroll = 0;
+                            if state_guard.show_errors {
+                                diagnostics::mark_events_read(&state_guard.diagnostics);
+                            }
                         }
-                        KeyCode::Char('k') | KeyCode::Up => {
+                        KeyCode::Esc => {
                             let mut state_guard = terminal_state.lock().await;
-                            state_guard.scroll_up();
+                            if !state_guard.show_errors {
+                                let _ = quit_tx_ui.send(true);
+                                break;
+                            }
+                            state_guard.show_errors = false;
+                            diagnostics::mark_events_read(&state_guard.diagnostics);
                         }
-                        _ => {}
+                        KeyCode::Char('s') | KeyCode::Char('S') => {
+                            let mut state_guard = terminal_state.lock().await;
+                            state_guard.show_sources = !state_guard.show_sources;
+                        }
+                        _ => {
+                            let height = terminal.size()?.height;
+                            let mut state_guard = terminal_state.lock().await;
+                            navigate(&mut state_guard, key.code, height);
+                        }
                     },
                     Event::Tick(_width) => {
                         // State is updated by the TCP source task
                     }
                     Event::Error => {
-                        break;
+                        return Err(std::io::Error::other("terminal input failed"));
                     }
                 }
             }
-            // Restore terminal
-            tui::restore()
+            Ok::<(), std::io::Error>(())
         }))
     } else {
         None
     };
 
-    let mut file = if let Some(output_path) = options.output {
-        let output_path = expanduser(PathBuf::from(output_path));
-        Some(
-            fs::OpenOptions::new()
-                .append(true)
-                .create(true)
-                .open(output_path)
-                .await?,
-        )
-    } else {
-        None
-    };
-
-    // Use tokio::select! to handle message processing and optional UI
-    if let Some(ui_handle) = ui_handle {
-        // Interactive mode: wait for either UI exit or message processing
-        tokio::select! {
-            _ = async {
-                loop {
-                    if *quit_rx.borrow() {
-                        break;
-                    }
-
-                    let maybe_message = tokio::select! {
-                        _ = quit_rx.changed() => None,
-                        maybe_message = rx.recv() => maybe_message,
-                    };
-
-                    let Some(mut message) = maybe_message else {
-                        break;
-                    };
-
-                    let state_guard = state.lock().await;
-                    sources::process_sentence(state_guard, &mut message).await;
-                    // Broadcast NMEA sentences to output servers
-                    if has_output_servers {
-                        for nmea in &message.nmea_sentences {
-                            let line = outputs::format_timestamped_nmea(
-                                message.timestamp, nmea,
-                            );
-                            let _ = nmea_tx.send(line);
-                        }
-                    }
-                    if let Ok(json) = serde_json::to_string(&message) {
-                        if let Some(file) = &mut file {
-                            let _ = file.write_all(json.as_bytes()).await;
-                            let _ = file.write_all(b"\n").await;
-                        }
-                        if let Some(c) = &mut redis_connect {
-                            publish_with_retry(c, redis_topic.as_str(), &json, redis_retry_interval)
-                                .await;
-                        }
-                    }
-                }
-            } => {},
-            _ = ui_handle => {
-                // UI has exited, signal shutdown
-                let _ = quit_tx.send(true);
-                let _ = shutdown_tx.send(());
-            }
-        }
-    } else {
-        // Non-interactive mode: just process messages
+    // The same processing path serves both modes. process_sentence consumes its
+    // guard, so file/Redis I/O happens without holding the application-state lock.
+    let process_messages = async {
         loop {
             if *quit_rx.borrow() {
                 break;
             }
-
             let maybe_message = tokio::select! {
+                biased;
                 _ = quit_rx.changed() => None,
-                maybe_message = rx.recv() => maybe_message,
+                message = rx.recv() => message,
             };
-
             let Some(mut message) = maybe_message else {
                 break;
             };
-
-            let state_guard = state.lock().await;
-            sources::process_sentence(state_guard, &mut message).await;
-            // Broadcast NMEA sentences to output servers
+            sources::process_sentence(state.lock().await, &mut message).await;
             if has_output_servers {
                 for nmea in &message.nmea_sentences {
                     let line = outputs::format_timestamped_nmea(message.timestamp, nmea);
                     let _ = nmea_tx.send(line);
                 }
             }
-            if let Ok(json) = serde_json::to_string(&message) {
-                if options.verbose {
-                    println!("{json}");
-                }
-                if let Some(file) = &mut file {
-                    let _ = file.write_all(json.as_bytes()).await;
-                    let _ = file.write_all(b"\n").await;
-                }
-                if let Some(c) = &mut redis_connect {
-                    publish_with_retry(c, redis_topic.as_str(), &json, redis_retry_interval).await;
+            let mut json = serde_json::to_string(&message)?;
+            if options.verbose {
+                println!("{json}");
+            }
+            if let Some(file) = &mut file {
+                json.push('\n');
+                file.write_all(json.as_bytes()).await?;
+                json.pop();
+            }
+            if let Some(connection) = &mut redis_connect {
+                // A failed output must not make quit wait forever for Redis.
+                tokio::select! {
+                    biased;
+                    _ = quit_rx.changed() => break,
+                    _ = publish_with_retry(connection, &redis_topic, &json, redis_retry_interval) => {},
                 }
             }
         }
-    }
+        Ok::<(), anyhow::Error>(())
+    };
+    let processing_result = if let Some(mut ui_handle) = ui_handle {
+        tokio::select! {
+            result = process_messages => {
+                // EOF/error can end processing before the user presses q.
+                ui_handle.abort();
+                let _ = ui_handle.await;
+                result
+            },
+            result = &mut ui_handle => {
+                let _ = quit_tx.send(true);
+                result.context("TUI task failed").and_then(|result| result.map_err(Into::into))
+            }
+        }
+    } else {
+        process_messages.await
+    };
 
-    // Signal source and output tasks to shut down.
     let _ = shutdown_tx.send(());
+    let restore_result = if options.interactive {
+        tui::restore()
+    } else {
+        Ok(())
+    };
 
-    // Wait for all source tasks to finish (with timeout)
-    let timeout = tokio::time::Duration::from_secs(2);
-    for handle in src_handles {
-        let _ = tokio::time::timeout(timeout, handle).await;
+    // Do not detach timed-out tasks or discard panics during shutdown.
+    let timeout = tokio::time::Duration::from_secs(5);
+    let mut task_errors = Vec::new();
+    for mut handle in src_handles {
+        match tokio::time::timeout(timeout, &mut handle).await {
+            Ok(Ok(())) => {}
+            Ok(Err(error)) => task_errors.push(format!("source task failed: {error}")),
+            Err(_) => {
+                handle.abort();
+                let _ = handle.await;
+                task_errors.push("source shutdown timed out".to_string());
+            }
+        }
     }
-
     drop(status_tx);
-    let _ = tokio::time::timeout(timeout, status_handle).await;
+    // Every source reporter is now dropped; drain status events before deciding
+    // whether EOF was successful or a finite source failed.
+    let status_result = status_handle.await.context("source status task failed");
+    task_errors.extend(
+        state
+            .lock()
+            .await
+            .source_statuses()
+            .filter_map(SourceEvent::terminal_error),
+    );
+    let flush_result = if let Some(file) = &mut file {
+        file.flush().await
+    } else {
+        Ok(())
+    };
+    if options.interactive {
+        // Do not write into the alternate screen, and include cleanup diagnostics.
+        diagnostics::print_report(&diagnostics);
+    }
+    restore_result?;
+    status_result?;
+    flush_result?;
+    processing_result?;
+    if !task_errors.is_empty() {
+        anyhow::bail!("{}", task_errors.join("; "));
+    }
+    Ok(())
+}
 
+fn navigate(state: &mut AppState, key: KeyCode, height: u16) {
+    match key {
+        KeyCode::Char('j' | 'J') | KeyCode::Down => {
+            state.scroll_down(table::visible_rows(height, state))
+        }
+        KeyCode::Char('k' | 'K') | KeyCode::Up => state.scroll_up(),
+        KeyCode::Char('g' | 'G') | KeyCode::Home | KeyCode::PageUp => state.scroll_to_top(),
+        _ => {}
+    }
+}
+
+fn initial_source_state(sources: &[sources::Source]) -> AppState {
+    let mut state = AppState::new();
+    for (index, source) in sources.iter().enumerate() {
+        state.set_source_status(SourceEvent::connecting(
+            SourceId::from_index(index),
+            source.label(),
+        ));
+    }
+    state
+}
+
+// Reject configuration errors before starting any device/task. Reconnection is
+// for transient source failures, not invalid values that would panic in DSP setup.
+fn validate_sources(sources: &[sources::Source]) -> Result<()> {
+    for source in sources {
+        let rate: Option<f64> = match source {
+            #[cfg(feature = "rtlsdr")]
+            sources::Source::RtlSdr(config) => config.sample_rate,
+            #[cfg(feature = "soapy")]
+            sources::Source::Soapy(config) => config.sample_rate,
+            #[cfg(feature = "hackrf")]
+            sources::Source::HackRf(config) => config.sample_rate,
+            #[cfg(feature = "airspy")]
+            sources::Source::Airspy(config) => {
+                if let Some(serial) = &config.airspy.config.serial {
+                    sources::parse_airspy_serial(serial).map_err(anyhow::Error::msg)?;
+                }
+                config.sample_rate
+            }
+            _ => None,
+        };
+        if let Some(rate) = rate {
+            anyhow::ensure!(
+                rate.is_finite() && rate > 0.0 && rate <= 12_288_000.0 && rate.fract() == 0.0,
+                "invalid IQ sample rate {rate}: expected integer Hz in 1..=12288000"
+            );
+        }
+    }
     Ok(())
 }
 
@@ -894,3 +979,6 @@ async fn publish_with_retry(
         }
     }
 }
+
+#[cfg(test)]
+mod tests;

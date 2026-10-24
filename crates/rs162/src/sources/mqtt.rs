@@ -30,7 +30,7 @@ use paho_mqtt as mqtt;
 use serde::{Deserialize, Serialize};
 use serde_json;
 use std::time::Duration;
-use tokio::sync::mpsc;
+use tokio::sync::{mpsc, watch};
 use tracing::{info, warn};
 
 use crate::{
@@ -113,8 +113,13 @@ pub struct MqttMessage {
 }
 
 impl MqttAisMessage {
-    /// Parse MQTT message from topic and JSON payload
-    fn from_mqtt(topic: String, payload: String) -> Result<Self, MqttError> {
+    /// Parse AIS data, ignoring the service's non-AIS status topic.
+    fn from_mqtt(topic: String, payload: String) -> Result<Option<Self>, MqttError> {
+        // vessels-v2/# includes this heartbeat/control topic. It is neither AIS
+        // nor a transport connection event, and its payload need not be AIS JSON.
+        if topic == "vessels-v2/status" {
+            return Ok(None);
+        }
         // Extract MMSI from topic: vessels-v2/<mmsi>/location or vessels-v2/<mmsi>/metadata
         let parts: Vec<&str> = topic.split('/').collect();
         if parts.len() != 3 || parts[0] != "vessels-v2" {
@@ -149,7 +154,7 @@ impl MqttAisMessage {
             }
         };
 
-        Ok(Self { mmsi, message_type })
+        Ok(Some(Self { mmsi, message_type }))
     }
 
     /// Convert to standard AIS Message enum
@@ -254,10 +259,22 @@ impl From<mqtt::Error> for MqttError {
     }
 }
 
+/// MQTT transport state, independent of whether AIS messages are arriving.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MqttConnectionStatus {
+    /// The initial connection is being established.
+    Connecting,
+    /// The MQTT transport is connected.
+    Connected,
+    /// The transport was lost; Paho is attempting automatic reconnection.
+    Reconnecting,
+}
+
 /// Asynchronous MQTT receiver for AIS messages
 pub struct MqttReceiver {
     rx: mpsc::Receiver<Result<MqttMessage, MqttError>>,
     client: mqtt::AsyncClient,
+    connection_status: watch::Receiver<MqttConnectionStatus>,
 }
 
 impl MqttReceiver {
@@ -305,11 +322,12 @@ impl MqttReceiver {
                 let payload = msg.payload_str().to_string();
 
                 match MqttAisMessage::from_mqtt(topic.clone(), payload) {
-                    Ok(mqtt_msg) => {
+                    Ok(Some(mqtt_msg)) => {
                         if let Err(e) = tx_clone.try_send(Ok(mqtt_msg.to_timed_message())) {
                             warn!("Failed to send message to channel: {}", e);
                         }
                     }
+                    Ok(None) => {}
                     Err(e) => {
                         warn!("Failed to parse MQTT message from topic {}: {}", topic, e);
                     }
@@ -317,15 +335,20 @@ impl MqttReceiver {
             }
         });
 
-        // Set up connection callback
+        // Publish lifecycle changes even when the AIS stream is idle. Keeping
+        // the latest value also preserves callbacks fired before connect returns.
+        let (status_tx, connection_status) = watch::channel(MqttConnectionStatus::Connecting);
+        let connected_tx = status_tx.clone();
         let topic_sub = topic.to_string();
         client.set_connected_callback(move |cli| {
+            connected_tx.send_replace(MqttConnectionStatus::Connected);
             info!("Connected to MQTT broker, subscribing to {}", topic_sub);
             let _sub_token = cli.subscribe(&topic_sub, MQTT_QOS);
         });
 
         // Set up disconnection callback
-        client.set_connection_lost_callback(|_cli| {
+        client.set_connection_lost_callback(move |_cli| {
+            status_tx.send_replace(MqttConnectionStatus::Reconnecting);
             warn!("Connection to MQTT broker lost");
         });
 
@@ -333,7 +356,16 @@ impl MqttReceiver {
         info!("Connecting to MQTT broker at {}", broker);
         client.connect(conn_opts).await?;
 
-        Ok(Self { rx, client })
+        Ok(Self {
+            rx,
+            client,
+            connection_status,
+        })
+    }
+
+    /// Observe connection/reconnection changes without waiting for AIS data.
+    pub fn connection_status(&self) -> watch::Receiver<MqttConnectionStatus> {
+        self.connection_status.clone()
     }
 
     /// Get the next AIS message from the MQTT stream
@@ -369,6 +401,65 @@ mod tests {
     use super::*;
 
     #[tokio::test]
+    async fn connection_callbacks_report_idle_connection_and_loss() {
+        use tokio::{
+            io::{AsyncReadExt, AsyncWriteExt},
+            net::TcpListener,
+            sync::oneshot,
+            time::timeout,
+        };
+
+        // A minimal local MQTT broker: acknowledge CONNECT, then close on request.
+        // No external Digitraffic connection or AIS message is needed.
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let broker_url = format!("tcp://{}", listener.local_addr().unwrap());
+        let (close_tx, close_rx) = oneshot::channel();
+        let broker = tokio::spawn(async move {
+            let (mut socket, _) = listener.accept().await.unwrap();
+            assert_eq!(socket.read_u8().await.unwrap() >> 4, 1); // CONNECT
+            let mut remaining = 0_usize;
+            let mut multiplier = 1;
+            loop {
+                let byte = socket.read_u8().await.unwrap();
+                remaining += usize::from(byte & 127) * multiplier;
+                assert!(remaining < 4096);
+                if byte & 128 == 0 {
+                    break;
+                }
+                multiplier *= 128;
+            }
+            let mut payload = vec![0; remaining];
+            socket.read_exact(&mut payload).await.unwrap();
+            socket.write_all(&[0x20, 0x02, 0x00, 0x00]).await.unwrap(); // CONNACK
+            close_rx.await.unwrap();
+        });
+        let receiver = timeout(
+            Duration::from_secs(5),
+            MqttReceiver::with_config("ship162-lifecycle-test", &broker_url, "test/#"),
+        )
+        .await
+        .unwrap()
+        .unwrap();
+        let mut status = receiver.connection_status();
+        timeout(
+            Duration::from_secs(5),
+            status.wait_for(|status| *status == MqttConnectionStatus::Connected),
+        )
+        .await
+        .unwrap()
+        .unwrap();
+        close_tx.send(()).unwrap();
+        timeout(
+            Duration::from_secs(5),
+            status.wait_for(|status| *status == MqttConnectionStatus::Reconnecting),
+        )
+        .await
+        .unwrap()
+        .unwrap();
+        broker.await.unwrap();
+    }
+
+    #[tokio::test]
     #[ignore]
     async fn test_mqtt_connection() {
         let receiver = MqttReceiver::new("ship162").await;
@@ -393,6 +484,34 @@ mod tests {
     }
 
     #[test]
+    fn service_status_messages_are_not_ais_parse_failures() {
+        for payload in ["online", "", r#"{"status":"ok"}"#] {
+            assert!(
+                MqttAisMessage::from_mqtt("vessels-v2/status".into(), payload.into())
+                    .unwrap()
+                    .is_none()
+            );
+        }
+    }
+
+    #[test]
+    fn malformed_ais_data_and_unknown_topics_still_return_errors() {
+        for topic in [
+            "vessels-v2/230703000/location",
+            "vessels-v2/230703000/metadata",
+            "vessels-v2/not-an-mmsi/location",
+            "vessels-v2/230703000/unknown",
+            "vessels-v2/status/unknown",
+            "unexpected/status",
+        ] {
+            assert!(
+                MqttAisMessage::from_mqtt(topic.into(), "{}".into()).is_err(),
+                "silently ignored {topic}"
+            );
+        }
+    }
+
+    #[test]
     fn test_parse_position_json() {
         let json = r#"{
             "time": 1763764197,
@@ -411,7 +530,7 @@ mod tests {
         let msg = MqttAisMessage::from_mqtt(topic, json.to_string());
         assert!(msg.is_ok());
 
-        let msg = msg.unwrap();
+        let msg = msg.unwrap().unwrap();
         assert_eq!(msg.mmsi, 230703000);
 
         if let MqttMessageType::Position(pos) = msg.message_type {
@@ -444,7 +563,7 @@ mod tests {
         let msg = MqttAisMessage::from_mqtt(topic, json.to_string());
         assert!(msg.is_ok());
 
-        let msg = msg.unwrap();
+        let msg = msg.unwrap().unwrap();
         assert_eq!(msg.mmsi, 253361000);
 
         if let MqttMessageType::Metadata(meta) = msg.message_type {

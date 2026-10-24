@@ -90,6 +90,12 @@ impl SourceId {
 pub enum SourceStatus {
     Connecting,
     Connected,
+    #[cfg(feature = "mqtt")]
+    Reconnecting {
+        reason: Cow<'static, str>,
+    },
+    Finished,
+    Stopped,
     Disconnected {
         reason: Cow<'static, str>,
         retry_in: Option<Duration>,
@@ -104,12 +110,45 @@ pub struct SourceEvent {
 }
 
 impl SourceEvent {
+    pub(crate) fn connecting(source_id: SourceId, source: impl Into<Arc<str>>) -> Self {
+        Self {
+            source_id,
+            source: source.into(),
+            status: SourceStatus::Connecting,
+        }
+    }
+
     pub(crate) const fn source_id(&self) -> SourceId {
         self.source_id
     }
 
+    pub(crate) fn status(&self) -> &SourceStatus {
+        &self.status
+    }
+
+    pub(crate) fn terminal_error(&self) -> Option<String> {
+        match &self.status {
+            SourceStatus::Disconnected {
+                reason,
+                retry_in: None,
+            } => Some(format!("{}: {reason}", self.source)),
+            _ => None,
+        }
+    }
+
     pub(crate) fn log(&self) {
         match &self.status {
+            #[cfg(feature = "mqtt")]
+            SourceStatus::Reconnecting { reason } => {
+                tracing::warn!(
+                    source = self.source.as_ref(),
+                    reason = reason.as_ref(),
+                    "source reconnecting"
+                );
+            }
+            SourceStatus::Finished | SourceStatus::Stopped => {
+                tracing::info!(source = self.source.as_ref(), status = ?self.status, "source ended");
+            }
             SourceStatus::Connecting => {
                 tracing::info!(
                     source_id = self.source_id.get(),
@@ -160,6 +199,12 @@ impl fmt::Display for SourceEvent {
         match &self.status {
             SourceStatus::Connecting => write!(f, "{}: connecting", self.source),
             SourceStatus::Connected => write!(f, "{}: connected", self.source),
+            #[cfg(feature = "mqtt")]
+            SourceStatus::Reconnecting { reason } => {
+                write!(f, "{}: {reason}; reconnecting", self.source)
+            }
+            SourceStatus::Finished => write!(f, "{}: finished", self.source),
+            SourceStatus::Stopped => write!(f, "{}: stopped", self.source),
             SourceStatus::Disconnected {
                 reason,
                 retry_in: Some(retry_in),
@@ -234,7 +279,7 @@ impl SourceRuntime {
         self.reporter.report(status);
     }
 
-    fn next_retry_in(&self) -> Duration {
+    pub(crate) fn next_retry_in(&self) -> Duration {
         let attempt = self.failed_attempts.fetch_add(1, Ordering::Relaxed);
         self.retry_policy.delay(attempt)
     }

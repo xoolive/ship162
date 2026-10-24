@@ -123,3 +123,51 @@ impl ReconnectingSource for TcpSource {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{
+        outputs::format_timestamped_nmea,
+        status::{RetryPolicy, SourceId},
+    };
+    use std::time::Duration;
+    use tokio::{io::AsyncWriteExt, net::TcpListener, sync::mpsc, time::timeout};
+
+    #[tokio::test]
+    async fn norwegian_style_timestamped_nmea_decodes_over_loopback_tcp() {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let sentence = include_str!("../../../rs162/data/ais_nmea.txt")
+            .lines()
+            .next()
+            .unwrap();
+        let packet = format_timestamped_nmea(1_760_000_000.0, sentence);
+        let server = tokio::spawn(async move {
+            let (mut socket, _) = listener.accept().await.unwrap();
+            socket.write_all(packet.as_bytes()).await.unwrap();
+        });
+        let (messages_tx, mut messages_rx) = mpsc::channel(1);
+        let (status_tx, mut status_rx) = mpsc::unbounded_channel();
+        let runtime = SourceRuntime::new(
+            SourceId::from_index(0),
+            "local NMEA",
+            status_tx,
+            RetryPolicy::default(),
+        );
+        let source = TcpSource::new(messages_tx, runtime, "127.0.0.1".into(), port);
+        timeout(Duration::from_secs(2), source.connect_once())
+            .await
+            .unwrap()
+            .unwrap();
+        server.await.unwrap();
+        assert!(matches!(
+            status_rx.try_recv().unwrap().status(),
+            SourceStatus::Connected
+        ));
+        let message = messages_rx.try_recv().unwrap();
+        assert_eq!(message.timestamp, 1_760_000_000.0);
+        assert!(message.message.mmsi() > 0);
+        assert!(messages_rx.try_recv().is_err());
+    }
+}

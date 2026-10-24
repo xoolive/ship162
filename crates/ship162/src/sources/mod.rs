@@ -361,6 +361,33 @@ pub enum Source {
     IqFile(IqFileConfig),
 }
 
+impl Source {
+    /// A startup label, registered before any asynchronous connection attempt.
+    pub(crate) fn label(&self) -> String {
+        match self {
+            Self::Tcp(config) => match &config.tcp {
+                AddressPath::Short(address) => format!("tcp://{address}"),
+                AddressPath::Long(address) => format!("tcp://{}:{}", address.host, address.port),
+            },
+            Self::WebSocket(config) => match &config.ws {
+                WsPath::Short(url) => url.clone(),
+                WsPath::Long(config) => config.url.clone(),
+            },
+            Self::IqFile(config) => format!("file://{}", config.iqfile),
+            #[cfg(feature = "mqtt")]
+            Self::Mqtt(config) => format!("mqtt: {}", config.mqtt),
+            #[cfg(feature = "rtlsdr")]
+            Self::RtlSdr(_) => "rtlsdr".into(),
+            #[cfg(feature = "airspy")]
+            Self::Airspy(_) => "airspy".into(),
+            #[cfg(feature = "hackrf")]
+            Self::HackRf(_) => "hackrf".into(),
+            #[cfg(feature = "soapy")]
+            Self::Soapy(_) => "soapy".into(),
+        }
+    }
+}
+
 impl FromStr for Source {
     type Err = SourceParseError;
 

@@ -11,6 +11,31 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
+  feature-check:
+    name: Check isolated feature (${{ matrix.feature }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        feature: [none, rtlsdr, airspy, hackrf, soapy, mqtt, ssh]
+    steps:
+      - uses: actions/checkout@v7
+      - name: Install native dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libsoapysdr-dev libssl-dev pkg-config cmake
+      - name: Check each package without feature unification
+        env:
+          FEATURE: ${{ matrix.feature }}
+        run: |
+          args=()
+          if [ "$FEATURE" != none ]; then
+            args+=(--features "$FEATURE")
+          fi
+          for package in rs162 ship162; do
+            cargo check -p "$package" --no-default-features "${args[@]}" --all-targets --locked
+          done
+
   build:
     runs-on: ubuntu-latest
     steps:
