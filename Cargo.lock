@@ -53,6 +53,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "683d7910e743518b0e34f1186f92494becacb047c7b6bf616c96772180fef923"
 
 [[package]]
+name = "android_system_properties"
+version = "0.1.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ae221649c9976a6f6c56ae1facf410f3ddb33cc661c4b7b61020a912d4237fbc"
+dependencies = [
+ "libc",
+]
+
+[[package]]
 name = "anstream"
 version = "1.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -518,6 +527,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "chrono"
+version = "0.4.45"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1aa79e62e7697b8e29b513a68abacf485adcd1fe8284a4316c5ae868e6633327"
+dependencies = [
+ "iana-time-zone",
+ "num-traits",
+ "windows-link",
+]
+
+[[package]]
 name = "cipher"
 version = "0.4.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -618,8 +638,8 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "98fc98460ba0ad5317075d3632b8dfc45d0be8c4a49347c2a38272019717614a"
 dependencies = [
  "compression-core",
- "zstd 0.14.0",
- "zstd-safe 8.0.0",
+ "zstd",
+ "zstd-safe",
 ]
 
 [[package]]
@@ -1043,13 +1063,13 @@ dependencies = [
 
 [[package]]
 name = "desperado"
-version = "0.5.0"
+version = "0.5.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ab7964d71b1fa71b9453f92a2ce414bba4d71b6ccd24f0c3ffa766c33038c944"
+checksum = "3184e8434c3ba789e2ea175d9a631f350a9b7b27fefbac6616fc82a4ce2a80cb"
 dependencies = [
  "async-compression",
  "biquad",
- "dirs 6.0.0",
+ "dirs 7.0.0",
  "futures",
  "hound",
  "num-complex",
@@ -1061,7 +1081,7 @@ dependencies = [
  "tokio",
  "tracing",
  "tracing-subscriber",
- "zstd 0.13.3",
+ "zstd",
 ]
 
 [[package]]
@@ -1674,6 +1694,30 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3944cf8cf766b40e2a1a333ee5e9b563f854d5fa49d6a8ca2764e97c6eddb214"
 dependencies = [
  "typenum",
+]
+
+[[package]]
+name = "iana-time-zone"
+version = "0.1.65"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e31bc9ad994ba00e440a8aa5c9ef0ec67d5cb5e5cb0cc7f8b744a35b389cc470"
+dependencies = [
+ "android_system_properties",
+ "core-foundation-sys",
+ "iana-time-zone-haiku",
+ "js-sys",
+ "log",
+ "wasm-bindgen",
+ "windows-core",
+]
+
+[[package]]
+name = "iana-time-zone-haiku"
+version = "0.1.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f31827a206f56af32e590ba56d5d2d085f558508192593743f16b2306495269f"
+dependencies = [
+ "cc",
 ]
 
 [[package]]
@@ -3063,9 +3107,9 @@ dependencies = [
 
 [[package]]
 name = "rs-hackrf"
-version = "0.5.0"
+version = "0.5.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e6291a4d456410ddb657dc65bcaad3ebe8e06c265e37233c338f863943e23dad"
+checksum = "6858103e0ab37f53122d6bbd528d510f999f32249bc62587d1802fd8e9edeb26"
 dependencies = [
  "nusb",
  "thiserror 2.0.21",
@@ -3074,9 +3118,9 @@ dependencies = [
 
 [[package]]
 name = "rs-rtl"
-version = "0.5.0"
+version = "0.5.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f64080cfcfce7cafd33c3a88630f86c2425be38db78efbd8d73f56f9decad101"
+checksum = "44dac86f459e54b8256e51ee865ac63e4e2058c11c7ff5361ed7e7deeaa1ecd9"
 dependencies = [
  "nusb",
  "thiserror 2.0.21",
@@ -3085,9 +3129,9 @@ dependencies = [
 
 [[package]]
 name = "rs-spy"
-version = "0.5.0"
+version = "0.5.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b6b4f9e49461174998cb489458abd7e7170d30c2e96734810176aafc3df81793"
+checksum = "81a41e859f93a66432c0aeb75d154adec088135386a5d6053936fa5587bbd436"
 dependencies = [
  "num-complex",
  "nusb",
@@ -3099,7 +3143,6 @@ dependencies = [
 name = "rs162"
 version = "0.1.5"
 dependencies = [
- "async-recursion",
  "deku",
  "desperado",
  "dirs 7.0.0",
@@ -3333,6 +3376,7 @@ name = "ship162"
 version = "0.1.5"
 dependencies = [
  "anyhow",
+ "chrono",
  "clap",
  "crossterm",
  "desperado",
@@ -3345,6 +3389,7 @@ dependencies = [
  "rs162",
  "serde",
  "serde_json",
+ "tempfile",
  "thiserror 2.0.21",
  "tokio",
  "tokio-tungstenite",
@@ -4575,29 +4620,11 @@ checksum = "dfcd145825aace48cff44a8844de64bf75feec3080e0aa5cdbde72961ae51a65"
 
 [[package]]
 name = "zstd"
-version = "0.13.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e91ee311a569c327171651566e07972200e76fcfe2242a4fa446149a3881c08a"
-dependencies = [
- "zstd-safe 7.3.0",
-]
-
-[[package]]
-name = "zstd"
 version = "0.14.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "bf06bd8162af0734b344780deb55b42a2429ae430870d13fcc12f238e880fe6e"
 dependencies = [
- "zstd-safe 8.0.0",
-]
-
-[[package]]
-name = "zstd-safe"
-version = "7.3.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "64d80649ab6db9d9f6f9c80a40becd948eda4714a0a5ac8c4d157a32231c7882"
-dependencies = [
- "zstd-sys",
+ "zstd-safe",
 ]
 
 [[package]]

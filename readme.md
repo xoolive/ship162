@@ -81,6 +81,23 @@ ship162 --verbose tcp://153.44.253.27:5631
 ship162 --interactive --output ais.jsonl rtlsdr://
 ```
 
+The centered controls bar follows Jet1090's shortcut notation:
+`(Esc/Q) quit | (↑/K) up | (↓/J) down | (⤒/G) top | (S) sources | (E) errors`.
+Lowercase keys work too. `G`, Home, or PageUp returns the active view to the top.
+Press `S` to show or hide source details; Esc quits unless the error window is open. Like Jet1090, the table border
+shows `●` connected (green), `○` connecting (cyan), `↻` reconnecting (yellow),
+and `✕` failed (red), including zero counts. Finished recordings use `✓` and
+stopped sources use `■`. Every configured source is counted from startup,
+including MQTT sources that have not received an AIS message yet.
+
+Press `E` (or `e`) to toggle recent warnings and errors. While the window is
+open, arrows or `J`/`K` scroll its history, `G` returns to the newest entry,
+and Esc closes it. The controls bar changes to describe the active window. The `⚠` badge counts unread errors. Up to
+100 events are retained, repeated consecutive diagnostics are grouped, and
+opening the window marks errors read without deleting them. After quitting,
+the retained diagnostics are printed to stderr, outside the restored TUI.
+The `s` panel separately shows each source's current status and failure reason.
+
 ## Configuration file
 
 Settings and sources can be stored in a TOML file. ship162 looks for configuration in order:
@@ -132,6 +149,23 @@ sample_rate = 3000000
 gain = 49.6
 ```
 
+SDR receivers retry opening after an error or disconnection, with a fixed
+five-second delay. An unplugged receiver therefore does not stop other sources
+or close the TUI. Quitting interrupts the retry wait and stops/joins active IQ
+workers before exit. Invalid sample rates are rejected before starting sources.
+
+### IQ recordings
+
+```toml
+[[sources]]
+iqfile = "/path/to/recording.iq"
+```
+
+The current file configuration expects raw CU8 IQ at 288 kHz. File sources are
+finite and are not retried: the application exits when all sources finish.
+Missing or truncated captures produce a nonzero exit status, rather than being
+silently ignored. When a live source is also configured, it continues receiving.
+
 ### TCP
 
 TCP sources reconnect after a fixed five-second delay by default. Configure the delay per source with `retry`:
@@ -159,6 +193,10 @@ retry = { strategy = "fixed", delay_seconds = 10 }
 ```
 
 ### MQTT
+
+The `vessels-v2/status` service-status topic is received with the wildcard
+subscription but is not AIS data. It is ignored without emitting parse warnings;
+malformed location/metadata messages still produce diagnostics.
 
 Requires building with `--features mqtt`. Connects to the [Finnish Digitraffic](https://www.digitraffic.fi/en/marine-traffic/) broker by default:
 

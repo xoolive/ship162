@@ -177,7 +177,6 @@ enum Io {
  * and proxy jumps. It also handles authentication using private keys.
  * It returns a Client object that can be used to interact with the server.
  */
-#[async_recursion::async_recursion]
 async fn connect_server(
     server: &str,
     params: &SshConfig,
@@ -221,7 +220,10 @@ async fn connect_server(
         },
         Some(jump) => {
             let jump_server = jump.first().expect("No jump host specified");
-            let jump_client = connect_server(jump_server, params, connection_map.clone()).await?;
+            // Only the recursive ProxyJump edge needs indirection; avoid a
+            // macro-generated boxed function and its redundant must_use attribute.
+            let jump_client =
+                Box::pin(connect_server(jump_server, params, connection_map.clone())).await?;
             let channel_config = ChannelConfig::default();
             let origin_addr = ("127.0.0.1".into(), 0);
             let (tunnel, tunnel_rx) = jump_client

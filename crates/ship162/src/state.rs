@@ -4,7 +4,10 @@ use rs162::{
 };
 use std::collections::{BTreeMap, HashMap};
 
-use crate::status::{SourceEvent, SourceId};
+use crate::{
+    diagnostics::SharedDiagnostics,
+    status::{SourceEvent, SourceId},
+};
 
 #[derive(Debug, Clone)]
 pub struct VesselState {
@@ -68,10 +71,14 @@ impl VesselState {
     }
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 pub struct AppState {
     vessels: HashMap<String, VesselState>,
     pub scroll_offset: usize,
+    pub show_sources: bool,
+    pub show_errors: bool,
+    pub error_scroll: usize,
+    pub diagnostics: SharedDiagnostics,
     source_statuses: BTreeMap<SourceId, SourceEvent>,
 }
 
@@ -109,13 +116,33 @@ impl AppState {
     }
 
     pub fn scroll_up(&mut self) {
-        self.scroll_offset = self.scroll_offset.saturating_sub(1);
+        if self.show_errors {
+            self.error_scroll = self.error_scroll.saturating_sub(1);
+        } else {
+            self.scroll_offset = self.scroll_offset.saturating_sub(1);
+        }
     }
 
     pub fn scroll_down(&mut self, max_visible: usize) {
-        let max_scroll = self.vessel_count().saturating_sub(max_visible);
-        if self.scroll_offset < max_scroll {
-            self.scroll_offset += 1;
+        if self.show_errors {
+            let max_scroll = crate::diagnostics::snapshot(&self.diagnostics)
+                .events
+                .len()
+                .saturating_sub(1);
+            self.error_scroll = self.error_scroll.saturating_add(1).min(max_scroll);
+        } else {
+            let max_scroll = self.vessel_count().saturating_sub(max_visible);
+            if self.scroll_offset < max_scroll {
+                self.scroll_offset += 1;
+            }
+        }
+    }
+
+    pub fn scroll_to_top(&mut self) {
+        if self.show_errors {
+            self.error_scroll = 0;
+        } else {
+            self.scroll_offset = 0;
         }
     }
 }
