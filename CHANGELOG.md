@@ -6,6 +6,7 @@
 
 - Upgrade Desperado and its SDR drivers to 0.5.1.
 - Fix HackRF-only builds and skip RTL-SDR examples when their feature is disabled.
+- Replace the SSH recursion macro with an explicitly boxed recursive call, avoiding Clippy 1.99's generated `double_must_use` error.
 - Stop and join IQ demodulators on shutdown, including idle readers and headless signals.
 - Propagate IQ read errors and exit after all finite sources end. Return failure for missing or truncated recordings.
 - Observe source-task failures and abort timed-out tasks instead of silently detaching them.

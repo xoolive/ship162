@@ -3143,7 +3143,6 @@ dependencies = [
 name = "rs162"
 version = "0.1.5"
 dependencies = [
- "async-recursion",
  "deku",
  "desperado",
  "dirs 7.0.0",
