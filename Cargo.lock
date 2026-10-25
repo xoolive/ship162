@@ -3141,7 +3141,7 @@ dependencies = [
 
 [[package]]
 name = "rs162"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "deku",
  "desperado",
@@ -3373,7 +3373,7 @@ dependencies = [
 
 [[package]]
 name = "ship162"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "anyhow",
  "chrono",

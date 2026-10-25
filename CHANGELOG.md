@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.2.1] - 2026-10-25
+
+### Changed
+
+- Deserialize source configuration through typed, Serde-derived raw inputs and `TryFrom` validation, preserving supported formats and strict field checks while improving diagnostics.
+
+### Fixed
+
+- Avoid repeating the underlying SoapySDR/driver error in the sources panel.
+- Accept nested RTL-SDR sample rates and structured SoapySDR `{ args, sample_rate }` tables (with their respective features), alongside canonical source-level settings; reject conflicting rates explicitly.
+- Preserve source and field details in TOML configuration errors, and name disabled backend features instead of reporting a generic untagged-enum failure.
+- Add configuration-loading regressions for mixed TCP/MQTT/WebSocket/RTL inputs, structured SoapySDR settings, and builds without optional backend support.
+
 ## [0.2.0] - 2026-10-24
 
 Changes since [v0.1.5](https://github.com/xoolive/ship162/releases/tag/v0.1.5).

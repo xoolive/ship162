@@ -100,7 +100,9 @@ pub async fn supervise<F, Fut>(
                 return;
             }
             Ok(()) => "IQ stream ended unexpectedly".to_string(),
-            Err(error) => format!("{error:#}"),
+            // Desperado's Display already includes the underlying driver error.
+            // Alternate anyhow formatting appends that same cause a second time.
+            Err(error) => error.to_string(),
         };
         let retry_in = live.then(|| runtime.next_retry_in());
         runtime.report(SourceStatus::Disconnected {
@@ -189,6 +191,27 @@ mod tests {
             statuses.recv().await.unwrap().status(),
             SourceStatus::Finished
         ));
+    }
+
+    #[tokio::test]
+    async fn open_errors_keep_embedded_cause_once() {
+        // Desperado's I/O and Soapy wrappers both include their source in Display.
+        let message = "injected device discovery failure";
+        let expected = desperado::Error::from(std::io::Error::other(message)).to_string();
+        let (tx, _rx) = mpsc::channel(1);
+        let (runtime, mut statuses) = runtime();
+        let (_shutdown_tx, shutdown_rx) = broadcast::channel(1);
+        supervise(tx, runtime, shutdown_rx, false, || async {
+            Err(std::io::Error::other(message).into())
+        })
+        .await;
+        statuses.recv().await.unwrap();
+        let failed = statuses.recv().await.unwrap();
+        let SourceStatus::Disconnected { reason, .. } = failed.status() else {
+            panic!("expected a disconnected source");
+        };
+        assert_eq!(reason.as_ref(), expected);
+        assert_eq!(reason.matches(message).count(), 1);
     }
 
     #[tokio::test]
