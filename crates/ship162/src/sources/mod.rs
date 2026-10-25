@@ -33,6 +33,7 @@ use url::Url;
 
 use crate::{state::AppState, status::RetryPolicy};
 
+mod config;
 pub mod iq;
 #[cfg(feature = "mqtt")]
 pub mod mqtt;
@@ -344,7 +345,7 @@ pub enum SourceParseError {
 
 // TODO: normalize endpoints and SDR defaults during source parsing
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(untagged)]
+#[serde(untagged, try_from = "config::RawSource")]
 pub enum Source {
     Tcp(TcpConfig),
     WebSocket(WebSocketConfig),
@@ -720,6 +721,136 @@ mod tests {
                 ),
             }
         };
+    }
+
+    #[cfg(feature = "soapy")]
+    #[test]
+    fn structured_soapy_args_and_rate_match_canonical_config() {
+        let nested: Source = toml::from_str("soapy = { args = 'driver=airspy', sample_rate = 3000000 }\ngain = { LNA = 13, MIX = 3, VGA = 13 }").unwrap();
+        let canonical: Source = toml::from_str("soapy = 'driver=airspy'\nsample_rate = 3000000\ngain = { LNA = 13, MIX = 3, VGA = 13 }").unwrap();
+        assert_eq!(nested, canonical);
+        let config = unwrap_source!(nested, Soapy);
+        assert_eq!(config.soapy.soapy, "driver=airspy");
+        assert_eq!(config.sample_rate, Some(3_000_000.0));
+    }
+
+    #[cfg(feature = "soapy")]
+    #[test]
+    fn structured_soapy_args_and_rate_roundtrip_without_gain() {
+        // Gain has a separate upstream Serialize/Deserialize mismatch; test the
+        // normalized device arguments and sample rate independently of it.
+        let source: Source =
+            toml::from_str("soapy = { args = 'driver=airspy', sample_rate = 3000000 }").unwrap();
+        assert_eq!(
+            toml::from_str::<Source>(&toml::to_string(&source).unwrap()).unwrap(),
+            source
+        );
+    }
+
+    #[cfg(feature = "soapy")]
+    #[test]
+    fn structured_soapy_rejects_unknown_settings_and_conflicting_rates() {
+        let error = toml::from_str::<Source>(
+            "soapy = { args = 'driver=airspy', sample_rate = 3000000 }\nsample_rate = 1000000",
+        )
+        .unwrap_err()
+        .to_string();
+        assert!(
+            error.contains("conflicting `sample_rate` and `soapy.sample_rate`"),
+            "{error}"
+        );
+        let error =
+            toml::from_str::<Source>("soapy = { args = 'driver=airspy', samplerate = 3000000 }")
+                .unwrap_err()
+                .to_string();
+        assert!(error.contains("invalid `soapy` device settings"), "{error}");
+        assert!(error.contains("samplerate"), "{error}");
+    }
+
+    #[cfg(not(feature = "soapy"))]
+    #[test]
+    fn structured_soapy_without_feature_is_explicitly_disabled() {
+        let error =
+            toml::from_str::<Source>("soapy = { args = 'driver=airspy', sample_rate = 3000000 }")
+                .unwrap_err()
+                .to_string();
+        assert!(error.contains("SoapySDR support is not enabled"), "{error}");
+        assert!(error.contains("--features soapy"), "{error}");
+    }
+
+    #[cfg(feature = "rtlsdr")]
+    #[test]
+    fn nested_rtlsdr_sample_rate_matches_source_level_and_roundtrips() {
+        let nested: Source =
+            toml::from_str("rtlsdr = { device = 0, sample_rate = 2304000 }").unwrap();
+        let canonical: Source =
+            toml::from_str("rtlsdr = { device = 0 }\nsample_rate = 2304000").unwrap();
+        assert_eq!(nested, canonical);
+        let encoded = toml::to_string(&nested).unwrap();
+        assert_eq!(toml::from_str::<Source>(&encoded).unwrap(), canonical);
+        let config = unwrap_source!(nested, RtlSdr);
+        assert_eq!(config.sample_rate, Some(2_304_000.0));
+        assert_eq!(config.rtlsdr.config.device, Some(0));
+    }
+
+    #[cfg(feature = "rtlsdr")]
+    #[test]
+    fn duplicate_rtlsdr_rates_must_agree() {
+        let matching: Source = toml::from_str(
+            "rtlsdr = { device = 0, sample_rate = 2304000 }\nsample_rate = 2304000.0",
+        )
+        .unwrap();
+        assert_eq!(
+            unwrap_source!(matching, RtlSdr).sample_rate,
+            Some(2_304_000.0)
+        );
+        let error = toml::from_str::<Source>(
+            "rtlsdr = { device = 0, sample_rate = 2304000 }\nsample_rate = 288000",
+        )
+        .unwrap_err()
+        .to_string();
+        assert!(
+            error.contains("conflicting `sample_rate` and `rtlsdr.sample_rate`"),
+            "{error}"
+        );
+    }
+
+    #[cfg(feature = "rtlsdr")]
+    #[test]
+    fn rtlsdr_errors_keep_backend_and_field_context() {
+        for input in [
+            "rtlsdr = { device = 0, sample_rte = 2304000 }",
+            "rtlsdr = { device = 0, sample_rate = 'fast' }",
+        ] {
+            let error = toml::from_str::<Source>(input).unwrap_err().to_string();
+            assert!(error.contains("rtlsdr"), "{error}");
+            assert!(error.contains("sample_"), "{error}");
+            assert!(!error.contains("untagged enum"), "{error}");
+        }
+    }
+
+    #[cfg(not(feature = "mqtt"))]
+    #[test]
+    fn mqtt_disabled_error_names_the_feature_in_toml() {
+        let error = toml::from_str::<Source>("mqtt = 'mqtt://mqtt.digitraffic.fi'")
+            .unwrap_err()
+            .to_string();
+        assert!(error.contains("MQTT support is not enabled"), "{error}");
+        assert!(error.contains("--features mqtt"), "{error}");
+        assert!(!error.contains("untagged enum"), "{error}");
+    }
+
+    #[test]
+    fn ambiguous_source_kinds_and_unknown_tcp_fields_are_explicit_errors() {
+        let error = toml::from_str::<Source>("tcp = 'localhost:5631'\nws = 'ws://localhost:8000'")
+            .unwrap_err()
+            .to_string();
+        assert!(error.contains("exactly one"), "{error}");
+        let error = toml::from_str::<Source>("tcp = 'localhost:5631'\nretrry = 5")
+            .unwrap_err()
+            .to_string();
+        assert!(error.contains("invalid `tcp` source"), "{error}");
+        assert!(error.contains("retrry"), "{error}");
     }
 
     #[cfg(feature = "rtlsdr")]

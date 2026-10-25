@@ -149,6 +149,32 @@ sample_rate = 3000000
 gain = 49.6
 ```
 
+For RTL-SDR, `sample_rate` may also be included in the device table:
+
+```toml
+[[sources]]
+rtlsdr = { device = 0, sample_rate = 2304000 }
+```
+
+This is equivalent to putting `sample_rate = 2304000` beside `rtlsdr`. If both
+forms are present, their values must match; conflicting rates are an error.
+With the optional `soapy` feature, structured device arguments and a nested
+sample rate are also accepted:
+
+```toml
+[[sources]]
+soapy = { args = "driver=airspy", sample_rate = 3000000 }
+gain = { LNA = 13, MIX = 3, VGA = 13 }
+```
+
+This is equivalent to `soapy = "driver=airspy"` with a source-level sample rate.
+Conflicting nested and source-level rates are rejected for either backend.
+These forms do not enable optional backends: SoapySDR still requires
+`--features soapy`, and MQTT requires `--features mqtt` (neither is in prebuilt
+binaries).
+Unsupported backends and malformed settings are reported by source/field name,
+rather than a generic untagged-enum error.
+
 SDR receivers retry opening after an error or disconnection, with a fixed
 five-second delay. An unplugged receiver therefore does not stop other sources
 or close the TUI. Quitting interrupts the retry wait and stops/joins active IQ
