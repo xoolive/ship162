@@ -1,8 +1,9 @@
 use anyhow::Result;
 use futures::StreamExt;
 use tokio::sync::mpsc::Sender;
-use tokio_tungstenite::connect_async;
+use tokio_tungstenite::client_async;
 use tracing::debug;
+use url::Url;
 
 use rs162::decode::nmea::{MessageAssembler, NmeaAisMessage};
 use rs162::prelude::Message;
@@ -25,23 +26,36 @@ impl WsSource {
 
     async fn connect_and_process(&self) -> Result<()> {
         match &self.path {
-            WsPath::Short(url) => {
-                let (ws_stream, _) = connect_async(url.as_str()).await?;
-                self.runtime.report(SourceStatus::Connected);
-                let (_write, read) = ws_stream.split();
-                self.process_stream(read).await
-            }
+            WsPath::Short(url) => self.connect_direct(url).await,
             WsPath::Long(ws) => {
                 #[cfg(feature = "ssh")]
                 if let Some(jump) = &ws.jump {
                     return self.connect_tunnelled(&ws.url, jump).await;
                 }
-                let (ws_stream, _) = connect_async(ws.url.as_str()).await?;
-                self.runtime.report(SourceStatus::Connected);
-                let (_write, read) = ws_stream.split();
-                self.process_stream(read).await
+                self.connect_direct(&ws.url).await
             }
         }
+    }
+
+    /// Connect without an SSH jump host, through an HTTP proxy if the environment sets one
+    async fn connect_direct(&self, url: &str) -> Result<()> {
+        let parsed = Url::parse(url)?;
+        let secure = parsed.scheme() == "wss";
+        let host = parsed
+            .host_str()
+            .ok_or_else(|| anyhow::anyhow!("missing host in {url}"))?;
+        let port = parsed
+            .port_or_known_default()
+            .unwrap_or(if secure { 443 } else { 80 });
+        if secure {
+            // Same limitation as before: this build has no TLS for websocket sources
+            anyhow::bail!("wss:// websocket sources need TLS support, which is not enabled");
+        }
+        let stream = rs162::sources::proxy::connect(host, port, secure).await?;
+        let (ws_stream, _) = client_async(url, stream).await?;
+        self.runtime.report(SourceStatus::Connected);
+        let (_write, read) = ws_stream.split();
+        self.process_stream(read).await
     }
 
     #[cfg(feature = "ssh")]
@@ -49,7 +63,6 @@ impl WsSource {
         use rs162::sources::ssh::TunnelledWebsocket;
         use tokio_tungstenite::client_async;
         use tokio_tungstenite::tungstenite::handshake::client::Request;
-        use url::Url;
 
         let parsed_url = Url::parse(url)?;
         let host = parsed_url.host_str().unwrap_or("localhost").to_owned();

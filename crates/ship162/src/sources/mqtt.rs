@@ -3,24 +3,36 @@ use rs162::sources::mqtt::{MqttConnectionStatus, MqttReceiver};
 use tokio::sync::mpsc::Sender;
 
 use crate::{
-    sources::TimedMessage,
+    sources::{MqttSettings, TimedMessage},
     status::{ReconnectingSource, SourceRuntime, SourceStatus},
 };
 
 pub struct MqttSource {
     tx: Sender<TimedMessage>,
+    settings: MqttSettings,
     client_id: String,
     runtime: SourceRuntime,
 }
 
 impl MqttSource {
-    pub fn new(tx: Sender<TimedMessage>, client_id: String, runtime: SourceRuntime) -> Self {
+    pub fn new(tx: Sender<TimedMessage>, settings: MqttSettings, runtime: SourceRuntime) -> Self {
+        let client_id = settings.client_id.clone().unwrap_or_else(random_client_id);
         Self {
             tx,
+            settings,
             client_id,
             runtime,
         }
     }
+}
+
+/// Brokers drop a client when another connects with its ID: make it unique
+fn random_client_id() -> String {
+    let nanos = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|elapsed| elapsed.subsec_nanos())
+        .unwrap_or_default();
+    format!("ship162-{:08x}", nanos ^ std::process::id().rotate_left(16))
 }
 
 fn connection_status(status: MqttConnectionStatus) -> SourceStatus {
@@ -39,9 +51,9 @@ impl ReconnectingSource for MqttSource {
     }
 
     async fn connect_once(&self) -> Result<()> {
-        // Preserve the legacy config's client-ID meaning. Broker/topic settings
-        // are a separate API change; new() still uses rs162's Digitraffic defaults.
-        let mut source = MqttReceiver::new(&self.client_id).await?;
+        let mut source =
+            MqttReceiver::with_config(&self.client_id, self.settings.url(), self.settings.topic())
+                .await?;
         let mut status = source.connection_status();
         self.runtime
             .report(connection_status(*status.borrow_and_update()));

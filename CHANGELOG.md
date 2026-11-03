@@ -14,6 +14,10 @@
 - Connect the MQTT source through an HTTP `CONNECT` proxy when `https_proxy` (or `http_proxy`, `all_proxy`) is set, honouring `no_proxy`, with Basic credentials from the proxy URL. New `rs162::sources::proxy` module.
 - Send a `Digitraffic-User` header, as Digitraffic asks of its clients.
 - Include MQTT support in prebuilt release binaries, now that it has no C build dependencies.
+- Add an [aisstream.io](https://aisstream.io) source (`aisstream` feature, enabled by default): subscribe to one or more bounding boxes with optional MMSI and message type filters, and convert position (types 1–3, 18, 19) and static (types 5, 24) reports to AIS messages. The API key is given by `key` or `key_file` (exclusive), or else by `AISSTREAM_API_KEY`, and is never printed. The connection negotiates `permessage-deflate` compression.
+- Open aisstream.io and `ws://` WebSocket connections through the same HTTP `CONNECT` proxy settings.
+- Configure the aisstream.io endpoint with `url` (default `wss://stream.aisstream.io/v0/stream`).
+- Configure the MQTT broker, topic and client ID: `mqtt = { url, topic, client_id }`, all optional (Digitraffic, `vessels-v2/#` and a random `ship162-` ID by default), or `mqtt://?url=…&topic=…&client_id=…` on the command line. `mqtt = "<client id>"` keeps working. The source label now shows the broker URL.
 
 ## [0.2.1] - 2026-10-25
 

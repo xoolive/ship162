@@ -6,9 +6,12 @@
 //! - NMEA file source for handling NMEA formatted files.
 //! - Timestamped NMEA source, e.g. for live AIS data streams over TCP (e.g. Norwegian Coastal Administration).
 //! - SSH tunneling for secure remote connections.
+//! - aisstream.io websocket source for decoded AIS messages (feature `aisstream`).
 //! - HTTP `CONNECT` proxy support for outgoing connections.
 //!
 
+#[cfg(feature = "aisstream")]
+pub mod aisstream;
 pub mod iq;
 #[cfg(feature = "mqtt")]
 pub mod mqtt;

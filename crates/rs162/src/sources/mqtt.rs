@@ -46,8 +46,10 @@ use crate::{
     prelude::Message,
 };
 
-const MQTT_BROKER: &str = "wss://meri.digitraffic.fi/mqtt"; // Use WebSocket Secure URI
-const MQTT_TOPIC: &str = "vessels-v2/#";
+/// The Digitraffic broker, MQTT over secure websockets
+pub const MQTT_BROKER: &str = "wss://meri.digitraffic.fi/mqtt";
+/// All Digitraffic vessel messages (locations and metadata)
+pub const MQTT_TOPIC: &str = "vessels-v2/#";
 const MQTT_QOS: QoS = QoS::AtLeastOnce;
 const CHANNEL_BUFFER_SIZE: usize = 100;
 /// Digitraffic asks clients to identify themselves with this header

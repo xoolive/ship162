@@ -132,11 +132,25 @@ retry = { strategy = "fixed", delay_seconds = 5 }
 # [[sources]]
 # ws = { url = "ws://remote_host:88888", jump = "jumphost" }
 
+# --- aisstream.io Source ---
+
+# Example: aisstream.io over the English Channel (requires aisstream feature, on by default)
+# The API key comes from key (the key itself) or key_file (a file containing
+# it), not both, or else from the AISSTREAM_API_KEY environment variable.
+# [[sources]]
+# [sources.aisstream]
+# bbox = [[48.5, -6.0], [52.0, 3.0]]  # optional, default: the whole world
+# key = "..."                         # or: key_file = "~/.config/ship162/aisstream_api_key"
+# url = "wss://stream.aisstream.io/v0/stream"  # optional, the default
+
 # --- MQTT Source ---
 
-# Example 17: MQTT source (Finnish Digitraffic broker)
+# Example 17: MQTT source (Finnish Digitraffic broker, all settings optional)
 [[sources]]
-mqtt = "mqtt://mqtt.digitraffic.fi"
+[sources.mqtt]
+# url = "wss://meri.digitraffic.fi/mqtt"
+# topic = "vessels-v2/#"
+# client_id = "ship162-myname"  # default: ship162- and a random suffix
 
 
 # ========== GAIN ==========

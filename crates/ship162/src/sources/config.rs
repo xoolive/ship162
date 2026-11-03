@@ -8,8 +8,12 @@ use serde::{de::IgnoredAny, Deserialize};
 use super::{AddressPath, IqFileConfig, Source, TcpConfig, WebSocketConfig, WsPath};
 use crate::status::RetryPolicy;
 
+#[cfg(feature = "aisstream")]
+type RawAisStream = super::AisStreamSettings;
+#[cfg(not(feature = "aisstream"))]
+type RawAisStream = IgnoredAny;
 #[cfg(feature = "mqtt")]
-type RawMqtt = String;
+type RawMqtt = RawMqttValue;
 #[cfg(not(feature = "mqtt"))]
 type RawMqtt = IgnoredAny;
 #[cfg(feature = "airspy")]
@@ -26,13 +30,26 @@ type RawRtlSdr = IgnoredAny;
 type RawSoapy = IgnoredAny;
 
 const ONE_BACKEND: &str =
-    "a source must specify exactly one of tcp, ws, mqtt, rtlsdr, soapy, airspy, hackrf or iqfile";
+    "a source must specify exactly one of tcp, ws, aisstream, mqtt, rtlsdr, soapy, airspy, hackrf or iqfile";
+
+/// `mqtt = "client id"` (the original form) or `mqtt = { url, topic, client_id }`
+#[cfg(feature = "mqtt")]
+#[derive(Deserialize)]
+#[serde(
+    untagged,
+    expecting = "a client ID string, or a table with url, topic and client_id"
+)]
+pub(super) enum RawMqttValue {
+    ClientId(String),
+    Settings(super::MqttSettings),
+}
 
 /// Known optional backends remain recognizable in builds without their feature.
 #[derive(Deserialize)]
 pub(super) struct RawSource {
     tcp: Option<AddressPath>,
     ws: Option<WsPath>,
+    aisstream: Option<RawAisStream>,
     mqtt: Option<RawMqtt>,
     rtlsdr: Option<RawRtlSdr>,
     soapy: Option<RawSoapy>,
@@ -120,6 +137,7 @@ impl TryFrom<RawSource> for Source {
         let mut kinds = [
             ("tcp", input.tcp.is_some()),
             ("ws", input.ws.is_some()),
+            ("aisstream", input.aisstream.is_some()),
             ("mqtt", input.mqtt.is_some()),
             ("rtlsdr", input.rtlsdr.is_some()),
             ("soapy", input.soapy.is_some()),
@@ -145,7 +163,7 @@ impl TryFrom<RawSource> for Source {
                 }
             }
         }
-        if input.retry.is_some() && !matches!(kind, "tcp" | "ws") {
+        if input.retry.is_some() && !matches!(kind, "tcp" | "ws" | "aisstream") {
             return Err(format!("invalid `{kind}` source: unknown field `retry`"));
         }
         match input {
@@ -169,10 +187,40 @@ impl TryFrom<RawSource> for Source {
                 iqfile: Some(iqfile),
                 ..
             } => Ok(Self::IqFile(IqFileConfig { iqfile })),
+            #[cfg(feature = "aisstream")]
+            RawSource {
+                aisstream: Some(aisstream),
+                retry,
+                ..
+            } => {
+                aisstream.validate()?;
+                Ok(Self::AisStream(super::AisStreamConfig {
+                    aisstream,
+                    retry: retry.unwrap_or_default(),
+                }))
+            }
+            #[cfg(not(feature = "aisstream"))]
+            RawSource {
+                aisstream: Some(_), ..
+            } => Err(super::SourceParseError::FeatureDisabled {
+                source_name: "aisstream.io",
+                feature: "aisstream",
+            }
+            .to_string()),
             #[cfg(feature = "mqtt")]
             RawSource {
                 mqtt: Some(mqtt), ..
-            } => Ok(Self::Mqtt(super::MqttConfig { mqtt })),
+            } => {
+                let mqtt = match mqtt {
+                    RawMqttValue::ClientId(client_id) => super::MqttSettings {
+                        client_id: Some(client_id),
+                        ..Default::default()
+                    },
+                    RawMqttValue::Settings(settings) => settings,
+                };
+                mqtt.validate()?;
+                Ok(Self::Mqtt(super::MqttConfig { mqtt }))
+            }
             #[cfg(not(feature = "mqtt"))]
             RawSource { mqtt: Some(_), .. } => Err(super::SourceParseError::FeatureDisabled {
                 source_name: "MQTT",

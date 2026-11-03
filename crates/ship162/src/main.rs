@@ -34,6 +34,8 @@ use tokio::{
 use tracing::{error, warn};
 use tracing_subscriber::{fmt, prelude::*, EnvFilter};
 
+#[cfg(feature = "aisstream")]
+use crate::sources::aisstream::AisStreamSource;
 use crate::sources::iq::supervise;
 #[cfg(feature = "mqtt")]
 use crate::sources::mqtt::MqttSource;
@@ -461,18 +463,37 @@ async fn main() -> Result<()> {
                     }
                 }
             }),
+            #[cfg(feature = "aisstream")]
+            sources::Source::AisStream(source_config) => {
+                let aisstream_clone = tx.clone();
+                tokio::spawn(async move {
+                    let runtime = SourceRuntime::new(
+                        source_id,
+                        "aisstream.io",
+                        source_status_tx,
+                        source_config.retry,
+                    );
+                    let source =
+                        AisStreamSource::new(aisstream_clone, runtime, source_config.aisstream);
+                    tokio::select! {
+                        _ = source.run() => {},
+                        _ = shutdown_rx.recv() => {},
+                    }
+                    source.runtime().report(status::SourceStatus::Stopped);
+                })
+            }
             #[cfg(feature = "mqtt")]
             sources::Source::Mqtt(source_config) => {
                 let mqtt_clone = tx.clone();
                 tokio::spawn(async move {
-                    let client_id = source_config.mqtt;
+                    let settings = source_config.mqtt;
                     let runtime = SourceRuntime::new(
                         source_id,
-                        format!("mqtt: {client_id}"),
+                        format!("mqtt: {}", settings.url()),
                         source_status_tx,
                         RetryPolicy::default(),
                     );
-                    let source = MqttSource::new(mqtt_clone, client_id, runtime);
+                    let source = MqttSource::new(mqtt_clone, settings, runtime);
                     tokio::select! {
                         _ = source.run() => {},
                         _ = shutdown_rx.recv() => {},
