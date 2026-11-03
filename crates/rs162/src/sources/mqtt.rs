@@ -1,7 +1,9 @@
 //! MQTT source for AIS messages from Digitraffic Finland
 //!
 //! This module provides real-time AIS message reception from the Finnish Digitraffic
-//! maritime traffic MQTT service (meri.digitraffic.fi).
+//! maritime traffic MQTT service (meri.digitraffic.fi), with the pure-Rust rumqttc
+//! client over secure websockets. Connections go through the HTTP proxy from the
+//! environment (`https_proxy`, `no_proxy`; see [`crate::sources::proxy`]).
 //!
 //! Example usage:
 //! ```no_run
@@ -26,12 +28,18 @@
 //! }
 //! ```
 
-use paho_mqtt as mqtt;
+use std::sync::Arc;
+use std::time::Duration;
+
+use rumqttc::{
+    AsyncClient, ConnectionError, Event, EventLoop, MqttOptions, Packet, Proxy, ProxyAuth,
+    ProxyType, QoS, TlsConfiguration, Transport,
+};
 use serde::{Deserialize, Serialize};
 use serde_json;
-use std::time::Duration;
 use tokio::sync::{mpsc, watch};
-use tracing::{info, warn};
+use tokio::task::JoinHandle;
+use tracing::{debug, info, warn};
 
 use crate::{
     decode::ais::{common::Timestamp, StaticAndVoyageData},
@@ -40,8 +48,13 @@ use crate::{
 
 const MQTT_BROKER: &str = "wss://meri.digitraffic.fi/mqtt"; // Use WebSocket Secure URI
 const MQTT_TOPIC: &str = "vessels-v2/#";
-const MQTT_QOS: i32 = 1;
+const MQTT_QOS: QoS = QoS::AtLeastOnce;
 const CHANNEL_BUFFER_SIZE: usize = 100;
+/// Digitraffic asks clients to identify themselves with this header
+const DIGITRAFFIC_USER: &str = "ship162";
+const KEEP_ALIVE: Duration = Duration::from_secs(20);
+const RECONNECT_MIN: Duration = Duration::from_secs(1);
+const RECONNECT_MAX: Duration = Duration::from_secs(30);
 
 /// JSON structure for position reports (vessels-v2/<mmsi>/location)
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -238,7 +251,10 @@ impl MqttAisMessage {
 
 #[derive(Debug)]
 pub enum MqttError {
-    Connection(mqtt::Error),
+    /// The broker could not be reached, or the MQTT connection failed
+    Connection(String),
+    /// The broker address is not a supported URI
+    Address(String),
     Channel(String),
 }
 
@@ -246,6 +262,7 @@ impl std::fmt::Display for MqttError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             MqttError::Connection(e) => write!(f, "MQTT connection error: {}", e),
+            MqttError::Address(e) => write!(f, "invalid MQTT broker address: {}", e),
             MqttError::Channel(s) => write!(f, "Channel error: {}", s),
         }
     }
@@ -253,9 +270,9 @@ impl std::fmt::Display for MqttError {
 
 impl std::error::Error for MqttError {}
 
-impl From<mqtt::Error> for MqttError {
-    fn from(e: mqtt::Error) -> Self {
-        MqttError::Connection(e)
+impl From<ConnectionError> for MqttError {
+    fn from(e: ConnectionError) -> Self {
+        MqttError::Connection(e.to_string())
     }
 }
 
@@ -266,15 +283,127 @@ pub enum MqttConnectionStatus {
     Connecting,
     /// The MQTT transport is connected.
     Connected,
-    /// The transport was lost; Paho is attempting automatic reconnection.
+    /// The transport was lost; the client is reconnecting automatically.
     Reconnecting,
+}
+
+/// Broker transport, parsed from `tcp://host:port`, `mqtt://host:port`, `ws://…` or `wss://…`
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct Broker {
+    host: String,
+    port: u16,
+    /// Websocket URL, None for plain TCP
+    websocket: Option<String>,
+    secure: bool,
+}
+
+impl Broker {
+    fn parse(uri: &str) -> Result<Self, MqttError> {
+        let (scheme, rest) = uri
+            .split_once("://")
+            .ok_or_else(|| MqttError::Address(format!("{uri}: expected scheme://host")))?;
+        let (secure, websocket, default_port) = match scheme {
+            "tcp" | "mqtt" => (false, false, 1883),
+            "ws" => (false, true, 80),
+            "wss" => (true, true, 443),
+            _ => {
+                return Err(MqttError::Address(format!(
+                    "{uri}: unsupported scheme `{scheme}`"
+                )))
+            }
+        };
+        let authority = rest.split('/').next().unwrap_or_default();
+        let (host, port) = match authority.rsplit_once(':') {
+            Some((host, port)) if !host.contains(':') || host.ends_with(']') => (
+                host,
+                port.parse()
+                    .map_err(|_| MqttError::Address(format!("{uri}: invalid port")))?,
+            ),
+            _ => (authority, default_port),
+        };
+        if host.is_empty() {
+            return Err(MqttError::Address(format!("{uri}: missing host")));
+        }
+        Ok(Self {
+            host: host
+                .trim_start_matches('[')
+                .trim_end_matches(']')
+                .to_string(),
+            port,
+            websocket: websocket.then(|| uri.to_string()),
+            secure,
+        })
+    }
+
+    fn options(&self, client_id: &str) -> MqttOptions {
+        let address = self.websocket.clone().unwrap_or_else(|| self.host.clone());
+        let mut options = MqttOptions::new(client_id, address, self.port);
+        options.set_keep_alive(KEEP_ALIVE).set_clean_session(true);
+        match (&self.websocket, self.secure) {
+            (Some(_), true) => {
+                options.set_transport(Transport::wss_with_config(tls_configuration()));
+            }
+            (Some(_), false) => {
+                options.set_transport(Transport::Ws);
+            }
+            _ => {}
+        }
+        if self.websocket.is_some() {
+            options.set_request_modifier(|mut request: http::Request<()>| async move {
+                if let Ok(value) = DIGITRAFFIC_USER.parse() {
+                    request.headers_mut().insert("Digitraffic-User", value);
+                }
+                request
+            });
+        }
+        // Websocket brokers go through the HTTP proxy from the environment, if any
+        match crate::sources::proxy::ProxySettings::from_env().proxy_for(&self.host, self.secure) {
+            Ok(Some(proxy)) => {
+                info!(
+                    proxy.host,
+                    proxy.port, "connecting to the MQTT broker through an HTTP proxy"
+                );
+                let auth = match proxy.credentials() {
+                    Some((username, password)) => ProxyAuth::Basic {
+                        username: username.to_string(),
+                        password: password.to_string(),
+                    },
+                    None => ProxyAuth::None,
+                };
+                options.set_proxy(Proxy {
+                    ty: ProxyType::Http,
+                    auth,
+                    addr: proxy.host.clone(),
+                    port: proxy.port,
+                });
+            }
+            Ok(None) => {}
+            Err(error) => warn!("ignoring invalid proxy setting: {}", error),
+        }
+        options
+    }
+}
+
+/// TLS with the bundled Mozilla roots and the ring provider: no system certificates or C toolchain needed
+fn tls_configuration() -> TlsConfiguration {
+    let mut roots = rustls::RootCertStore::empty();
+    roots.extend(webpki_roots::TLS_SERVER_ROOTS.iter().cloned());
+    let config = rustls::ClientConfig::builder_with_provider(Arc::new(
+        rustls::crypto::ring::default_provider(),
+    ))
+    .with_safe_default_protocol_versions()
+    .expect("ring supports the default TLS versions")
+    .with_root_certificates(roots)
+    .with_no_client_auth();
+    TlsConfiguration::Rustls(Arc::new(config))
 }
 
 /// Asynchronous MQTT receiver for AIS messages
 pub struct MqttReceiver {
     rx: mpsc::Receiver<Result<MqttMessage, MqttError>>,
-    client: mqtt::AsyncClient,
+    client: AsyncClient,
     connection_status: watch::Receiver<MqttConnectionStatus>,
+    task: JoinHandle<()>,
 }
 
 impl MqttReceiver {
@@ -284,82 +413,49 @@ impl MqttReceiver {
     }
 
     /// Create a new MQTT receiver with custom broker and topic
+    ///
+    /// Returns once the broker acknowledged the connection, or with the error of
+    /// the first attempt. Later disconnections are retried automatically and
+    /// reported through [`MqttReceiver::connection_status`].
     pub async fn with_config(
         client_id: &str,
         broker: &str,
         topic: &str,
     ) -> Result<Self, MqttError> {
         info!("Creating MQTT client with ID: {}", client_id);
-
-        // Use WebSocket transport
-        let create_opts = mqtt::CreateOptionsBuilder::new()
-            .server_uri(broker)
-            .client_id(client_id)
-            .persistence(None)
-            .finalize();
-
-        let client = mqtt::AsyncClient::new(create_opts)?;
-
-        // Set up connection options with TLS
-        let ssl_opts = mqtt::SslOptionsBuilder::new().finalize();
-
-        let conn_opts = mqtt::ConnectOptionsBuilder::new()
-            .ssl_options(ssl_opts)
-            .keep_alive_interval(Duration::from_secs(20))
-            .clean_session(true)
-            .automatic_reconnect(Duration::from_secs(1), Duration::from_secs(30))
-            .finalize();
-
-        // Create channel for messages
-        let (tx, rx) = mpsc::channel(CHANNEL_BUFFER_SIZE);
-
-        // Set up message callback
-        let tx_clone = tx.clone();
-
-        client.set_message_callback(move |_cli, msg_opt| {
-            if let Some(msg) = msg_opt {
-                let topic = msg.topic().to_string();
-                let payload = msg.payload_str().to_string();
-
-                match MqttAisMessage::from_mqtt(topic.clone(), payload) {
-                    Ok(Some(mqtt_msg)) => {
-                        if let Err(e) = tx_clone.try_send(Ok(mqtt_msg.to_timed_message())) {
-                            warn!("Failed to send message to channel: {}", e);
-                        }
-                    }
-                    Ok(None) => {}
-                    Err(e) => {
-                        warn!("Failed to parse MQTT message from topic {}: {}", topic, e);
-                    }
-                }
-            }
-        });
-
-        // Publish lifecycle changes even when the AIS stream is idle. Keeping
-        // the latest value also preserves callbacks fired before connect returns.
+        let options = Broker::parse(broker)?.options(client_id);
+        let (client, mut eventloop) = AsyncClient::new(options, CHANNEL_BUFFER_SIZE);
         let (status_tx, connection_status) = watch::channel(MqttConnectionStatus::Connecting);
-        let connected_tx = status_tx.clone();
-        let topic_sub = topic.to_string();
-        client.set_connected_callback(move |cli| {
-            connected_tx.send_replace(MqttConnectionStatus::Connected);
-            info!("Connected to MQTT broker, subscribing to {}", topic_sub);
-            let _sub_token = cli.subscribe(&topic_sub, MQTT_QOS);
-        });
 
-        // Set up disconnection callback
-        client.set_connection_lost_callback(move |_cli| {
-            status_tx.send_replace(MqttConnectionStatus::Reconnecting);
-            warn!("Connection to MQTT broker lost");
-        });
-
-        // Connect to broker
+        // The first connection: report its failure to the caller, as a reconnecting source expects
         info!("Connecting to MQTT broker at {}", broker);
-        client.connect(conn_opts).await?;
+        loop {
+            match eventloop.poll().await {
+                Ok(Event::Incoming(Packet::ConnAck(_))) => break,
+                Ok(_) => continue,
+                Err(error) => return Err(error.into()),
+            }
+        }
+        status_tx.send_replace(MqttConnectionStatus::Connected);
+        info!("Connected to MQTT broker, subscribing to {}", topic);
+        client
+            .subscribe(topic, MQTT_QOS)
+            .await
+            .map_err(|e| MqttError::Connection(e.to_string()))?;
 
+        let (tx, rx) = mpsc::channel(CHANNEL_BUFFER_SIZE);
+        let task = tokio::spawn(run(
+            eventloop,
+            client.clone(),
+            topic.to_string(),
+            tx,
+            status_tx,
+        ));
         Ok(Self {
             rx,
             client,
             connection_status,
+            task,
         })
     }
 
@@ -376,23 +472,82 @@ impl MqttReceiver {
     /// Disconnect from the MQTT broker
     pub async fn disconnect(self) -> Result<(), MqttError> {
         info!("Disconnecting from MQTT broker");
-        self.client.disconnect(None).await?;
-        Ok(())
+        self.client
+            .disconnect()
+            .await
+            .map_err(|e| MqttError::Connection(e.to_string()))
     }
 
     /// Check if the client is connected
     pub fn is_connected(&self) -> bool {
-        self.client.is_connected()
+        *self.connection_status.borrow() == MqttConnectionStatus::Connected
+    }
+}
+
+/// Drive the event loop: forward AIS messages, reconnect with a growing delay, resubscribe
+async fn run(
+    mut eventloop: EventLoop,
+    client: AsyncClient,
+    topic: String,
+    tx: mpsc::Sender<Result<MqttMessage, MqttError>>,
+    status_tx: watch::Sender<MqttConnectionStatus>,
+) {
+    let mut delay = RECONNECT_MIN;
+    loop {
+        match eventloop.poll().await {
+            Ok(Event::Incoming(Packet::ConnAck(_))) => {
+                delay = RECONNECT_MIN;
+                status_tx.send_replace(MqttConnectionStatus::Connected);
+                info!("Reconnected to MQTT broker, subscribing to {}", topic);
+                // A clean session forgets subscriptions; subscribe from a task, as the
+                // request queue is only drained by this loop
+                let client = client.clone();
+                let topic = topic.clone();
+                tokio::spawn(async move {
+                    if let Err(e) = client.subscribe(topic, MQTT_QOS).await {
+                        warn!("MQTT subscription failed: {}", e);
+                    }
+                });
+            }
+            Ok(Event::Incoming(Packet::Publish(publish))) => {
+                let payload = String::from_utf8_lossy(&publish.payload).into_owned();
+                match MqttAisMessage::from_mqtt(publish.topic.clone(), payload) {
+                    Ok(Some(message)) => {
+                        if let Err(e) = tx.try_send(Ok(message.to_timed_message())) {
+                            if tx.is_closed() {
+                                return; // the receiver was dropped
+                            }
+                            warn!("Failed to send message to channel: {}", e);
+                        }
+                    }
+                    Ok(None) => {}
+                    Err(e) => warn!(
+                        "Failed to parse MQTT message from topic {}: {}",
+                        publish.topic, e
+                    ),
+                }
+            }
+            Ok(event) => debug!(?event, "MQTT event"),
+            Err(ConnectionError::RequestsDone) => return, // client disconnected
+            Err(error) => {
+                if tx.is_closed() {
+                    return;
+                }
+                if *status_tx.borrow() != MqttConnectionStatus::Reconnecting {
+                    warn!("Connection to MQTT broker lost: {}", error);
+                }
+                status_tx.send_replace(MqttConnectionStatus::Reconnecting);
+                tokio::time::sleep(delay).await;
+                delay = (delay * 2).min(RECONNECT_MAX);
+            }
+        }
     }
 }
 
 impl Drop for MqttReceiver {
     fn drop(&mut self) {
-        if self.is_connected() {
-            info!("MqttReceiver dropped, disconnecting");
-            // Note: Can't await in Drop, so we just disconnect synchronously
-            std::mem::drop(self.client.disconnect(None));
-        }
+        // Stop the event loop; the broker sees the connection close
+        self.task.abort();
     }
 }
 
@@ -481,6 +636,43 @@ mod tests {
 
             let _ = rx.disconnect().await;
         }
+    }
+
+    #[test]
+    fn parses_broker_addresses() {
+        let broker = Broker::parse("wss://meri.digitraffic.fi/mqtt").unwrap();
+        assert_eq!(
+            (broker.host.as_str(), broker.port, broker.secure),
+            ("meri.digitraffic.fi", 443, true)
+        );
+        assert_eq!(
+            broker.websocket.as_deref(),
+            Some("wss://meri.digitraffic.fi/mqtt")
+        );
+        let broker = Broker::parse("tcp://127.0.0.1:1884").unwrap();
+        assert_eq!(
+            (broker.host.as_str(), broker.port, broker.websocket),
+            ("127.0.0.1", 1884, None)
+        );
+        assert_eq!(Broker::parse("mqtt://broker").unwrap().port, 1883);
+        assert_eq!(Broker::parse("ws://[::1]:8080/mqtt").unwrap().host, "::1");
+        assert!(Broker::parse("broker:1883").is_err());
+        assert!(Broker::parse("ssl://broker:8883").is_err());
+    }
+
+    #[tokio::test]
+    async fn first_connection_failure_is_returned() {
+        // Nothing listens on this port
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        drop(listener);
+        let result = MqttReceiver::with_config(
+            "ship162-refused",
+            &format!("tcp://127.0.0.1:{port}"),
+            "test/#",
+        )
+        .await;
+        assert!(matches!(result, Err(MqttError::Connection(_))));
     }
 
     #[test]
