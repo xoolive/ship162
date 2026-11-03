@@ -6,18 +6,24 @@ use tokio::sync::{broadcast, mpsc::Sender};
 use tracing::warn;
 
 use crate::{
-    sources::TimedMessage,
+    sources::{Reception, TimedMessage},
     status::{SourceRuntime, SourceStatus},
 };
 
 pub struct Source {
     tx: Sender<TimedMessage>,
     source: AisAsyncIqSource,
+    /// Template for the metadata of each message
+    reception: Reception,
 }
 
 impl Source {
-    pub fn new(tx: Sender<TimedMessage>, source: AisAsyncIqSource) -> Self {
-        Self { tx, source }
+    pub fn new(tx: Sender<TimedMessage>, source: AisAsyncIqSource, reception: Reception) -> Self {
+        Self {
+            tx,
+            source,
+            reception,
+        }
     }
 
     /// Wait for the owned IQ reader to finish hardware cleanup.
@@ -31,12 +37,19 @@ impl Source {
             let msg = msg_res?;
             let encoded = msg.encode_nmea();
             if let Some(ais_msg) = encoded.decode() {
+                let reception = Reception {
+                    timestamp: encoded.timestamp,
+                    signal_level: Some(encoded.signal_level),
+                    ..self.reception.clone()
+                };
                 let sentence = super::TimedMessage {
                     timestamp: encoded.timestamp,
                     signal_level: Some(encoded.signal_level),
                     message: ais_msg,
                     mmsi_info: None,
                     nmea_sentences: encoded.nmea_sentences,
+                    payload: Some(encoded.bits),
+                    metadata: vec![reception],
                 };
                 self.tx.send(sentence).await?;
             }
@@ -73,7 +86,7 @@ pub async fn supervise<F, Fut>(
             Ok(source) => {
                 runtime.report(SourceStatus::Connected);
                 // Keep ownership outside select!: dropping run() must not skip stop/join.
-                let mut source = Source::new(tx.clone(), source);
+                let mut source = Source::new(tx.clone(), source, runtime.reception(0.0, None));
                 let outcome = tokio::select! {
                     biased;
                     _ = shutdown.recv() => None,
@@ -159,7 +172,11 @@ mod tests {
     #[tokio::test]
     async fn read_errors_reach_the_application() {
         let (tx, _rx) = mpsc::channel(1);
-        let mut source = Source::new(tx, fake_source(Some("injected read failure")));
+        let mut source = Source::new(
+            tx,
+            fake_source(Some("injected read failure")),
+            runtime().0.reception(0.0, None),
+        );
         assert!(source
             .run()
             .await

@@ -19,6 +19,11 @@ prevent_sleep = false
 # redis_url = "redis://localhost:6379"
 # redis_topic = "ship162"
 
+# With several sources, merge receptions of the same message (milliseconds)
+# deduplication = 1000       # identical raw AIS bits
+# soft_deduplication = 3000  # decoded feeds such as MQTT
+# no_deduplication = false
+
 # Multiple sources can be defined. Each [[sources]] section defines one source.
 # All SDR sources share the same top-level fields for gain, sample_rate, and bias_tee.
 

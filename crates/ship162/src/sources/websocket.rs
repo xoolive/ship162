@@ -157,13 +157,8 @@ impl WsSource {
                 if let Ok(Some(binary)) = assembler.add_fragment(nmea_msg) {
                     let message = Message::from_nmea_binary(&binary).ok();
                     if let Some(message) = message {
-                        let sentence = TimedMessage {
-                            timestamp,
-                            signal_level: None,
-                            message,
-                            mmsi_info: None,
-                            nmea_sentences: vec![],
-                        };
+                        let sentence =
+                            TimedMessage::received(&self.runtime, timestamp, message, Some(binary));
                         self.tx.send(sentence).await?;
                     }
                 }

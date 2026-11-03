@@ -279,6 +279,20 @@ impl SourceRuntime {
         self.reporter.report(status);
     }
 
+    /// A reception by this source, for the message metadata
+    pub(crate) fn reception(
+        &self,
+        timestamp: f64,
+        signal_level: Option<f32>,
+    ) -> crate::sources::Reception {
+        crate::sources::Reception {
+            source: self.reporter.source.to_string(),
+            timestamp,
+            signal_level,
+            source_id: Some(self.reporter.source_id),
+        }
+    }
+
     pub(crate) fn next_retry_in(&self) -> Duration {
         let attempt = self.failed_attempts.fetch_add(1, Ordering::Relaxed);
         self.retry_policy.delay(attempt)

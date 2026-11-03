@@ -9,6 +9,8 @@
 
 ### Added
 
+- Merge receptions of the same message from several sources, in two stages: identical raw AIS bits less than `deduplication` ms apart (default 1000), and, for decoded feeds such as MQTT, the same vessel and position (or identical content) less than `soft_deduplication` ms apart (default 3000). Receptions from one source are never merged, and ambiguous ones stay separate. `--no-deduplication` disables it; a single source is never delayed.
+- Every JSON message now has a `metadata` list with each reception's source label, timestamp and signal level.
 - Connect the MQTT source through an HTTP `CONNECT` proxy when `https_proxy` (or `http_proxy`, `all_proxy`) is set, honouring `no_proxy`, with Basic credentials from the proxy URL. New `rs162::sources::proxy` module.
 - Send a `Digitraffic-User` header, as Digitraffic asks of its clients.
 - Include MQTT support in prebuilt release binaries, now that it has no C build dependencies.
