@@ -1,5 +1,6 @@
 #![doc = include_str!("../readme.md")]
 
+mod dedup;
 mod diagnostics;
 mod outputs;
 mod sources;
@@ -104,6 +105,21 @@ struct Options {
     #[arg(long, value_name = "ADDR")]
     #[serde(default)]
     udp_targets: Vec<String>,
+
+    /// With several sources, merge receptions of identical raw AIS bits less
+    /// than this many milliseconds apart (default 1000)
+    #[arg(long, value_name = "MS")]
+    deduplication: Option<u32>,
+
+    /// With several sources, merge identical reports from decoded feeds (MQTT,
+    /// aisstream.io) less than this many milliseconds apart (default 3000)
+    #[arg(long, value_name = "MS")]
+    soft_deduplication: Option<u32>,
+
+    /// Pass messages from several sources through without merging duplicates
+    #[arg(long, default_value = "false")]
+    #[serde(default)]
+    no_deduplication: bool,
 }
 
 #[tokio::main]
@@ -173,6 +189,15 @@ async fn main() -> Result<()> {
     }
     if !cli_options.udp_targets.is_empty() {
         options.udp_targets = cli_options.udp_targets;
+    }
+    if cli_options.deduplication.is_some() {
+        options.deduplication = cli_options.deduplication;
+    }
+    if cli_options.soft_deduplication.is_some() {
+        options.soft_deduplication = cli_options.soft_deduplication;
+    }
+    if cli_options.no_deduplication {
+        options.no_deduplication = true;
     }
     options.sources.append(&mut cli_options.sources);
 
@@ -289,6 +314,19 @@ async fn main() -> Result<()> {
     });
 
     let (tx, mut rx) = tokio::sync::mpsc::channel(10);
+    // With several sources, receptions of the same message are merged before
+    // processing. The deduplication task owns the processing sender.
+    let tx = if options.sources.len() > 1 && !options.no_deduplication {
+        let settings = dedup::Settings {
+            exact_ms: options.deduplication.unwrap_or(dedup::DEFAULT_EXACT_MS),
+            soft_ms: options.soft_deduplication.unwrap_or(dedup::DEFAULT_SOFT_MS),
+        };
+        let (source_tx, source_rx) = tokio::sync::mpsc::channel(1024);
+        tokio::spawn(dedup::deduplicate(source_rx, tx, settings));
+        source_tx
+    } else {
+        tx
+    };
     let (quit_tx, mut quit_rx) = watch::channel(false);
     // Add a shutdown signal channel
     let (shutdown_tx, _shutdown_rx) = tokio::sync::broadcast::channel::<()>(1);

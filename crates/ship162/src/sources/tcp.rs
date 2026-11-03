@@ -86,13 +86,12 @@ impl ReconnectingSource for TcpSource {
                     continue;
                 };
                 self.tx
-                    .send(super::TimedMessage {
-                        timestamp: sentence.timestamp,
-                        signal_level: None,
+                    .send(super::TimedMessage::received(
+                        &self.runtime,
+                        sentence.timestamp,
                         message,
-                        mmsi_info: None,
-                        nmea_sentences: vec![],
-                    })
+                        Some(sentence.binary_data),
+                    ))
                     .await?;
             }
             return Ok(());
@@ -110,13 +109,12 @@ impl ReconnectingSource for TcpSource {
                 continue;
             };
             self.tx
-                .send(super::TimedMessage {
-                    timestamp: sentence.timestamp,
-                    signal_level: None,
+                .send(super::TimedMessage::received(
+                    &self.runtime,
+                    sentence.timestamp,
                     message,
-                    mmsi_info: None,
-                    nmea_sentences: vec![],
-                })
+                    Some(sentence.binary_data),
+                ))
                 .await?;
         }
 

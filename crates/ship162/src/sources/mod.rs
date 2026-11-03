@@ -31,7 +31,10 @@ use tokio::sync::MutexGuard;
 use tracing::error;
 use url::Url;
 
-use crate::{state::AppState, status::RetryPolicy};
+use crate::{
+    state::AppState,
+    status::{RetryPolicy, SourceId, SourceRuntime},
+};
 
 mod config;
 pub mod iq;
@@ -579,6 +582,46 @@ pub struct TimedMessage {
     pub mmsi_info: Option<MmsiInfo>,
     #[serde(skip)]
     pub nmea_sentences: Vec<String>,
+    /// Raw AIS bits as received (NMEA or IQ sources): exact duplicates share them.
+    /// Decoded feeds (MQTT, aisstream.io) have none.
+    #[serde(skip)]
+    pub payload: Option<Vec<u8>>,
+    /// Every source that received this message, with its own timestamp
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub metadata: Vec<Reception>,
+}
+
+/// One reception of a message by a source
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Reception {
+    /// The source label, e.g. `tcp://153.44.253.27:5631`
+    pub source: String,
+    pub timestamp: f64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub signal_level: Option<f32>,
+    /// Identifies the configured source: two receptions from the same one are never merged
+    #[serde(skip)]
+    pub source_id: Option<SourceId>,
+}
+
+impl TimedMessage {
+    /// A message received once, by the source behind `runtime`
+    pub fn received(
+        runtime: &SourceRuntime,
+        timestamp: f64,
+        message: Message,
+        payload: Option<Vec<u8>>,
+    ) -> Self {
+        Self {
+            timestamp,
+            signal_level: None,
+            message,
+            mmsi_info: None,
+            nmea_sentences: vec![],
+            payload,
+            metadata: vec![runtime.reception(timestamp, None)],
+        }
+    }
 }
 
 pub async fn process_sentence(mut state: MutexGuard<'_, AppState>, sentence: &mut TimedMessage) {

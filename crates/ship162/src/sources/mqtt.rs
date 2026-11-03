@@ -54,13 +54,12 @@ impl ReconnectingSource for MqttSource {
                 message = source.next() => {
                     let Some(message) = message else { return Ok(()) };
                     let message = message?;
-                    self.tx.send(TimedMessage {
-                        timestamp: message.timestamp,
-                        signal_level: None,
-                        message: message.message,
-                        mmsi_info: None,
-                        nmea_sentences: vec![],
-                    }).await?;
+                    self.tx.send(TimedMessage::received(
+                        &self.runtime,
+                        message.timestamp,
+                        message.message,
+                        None,
+                    )).await?;
                 }
             }
         }

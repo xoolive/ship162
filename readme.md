@@ -243,6 +243,32 @@ ship162 --serve-tcp 0.0.0.0:5631 rtlsdr://
 ship162 --serve-udp 0.0.0.0:5632 rtlsdr://
 ```
 
+### Deduplication
+
+With several sources, the same message is often received more than once: by
+two antennas, or through two aggregated feeds relaying the same coastal
+stations. ship162 then merges receptions before output, in two stages:
+
+- **exact**: receptions that carry raw AIS bits (TCP, WebSocket, SDR and IQ
+  sources) merge when the bits are identical and they are less than
+  `deduplication` milliseconds apart (default 1000);
+- **soft**: decoded feeds (MQTT) have no raw bits, so a reception from one of
+  them merges with another when both report the same vessel at the same
+  position (or carry identical content, for other messages) less than
+  `soft_deduplication` milliseconds apart (default 3000).
+
+Receptions from the same source are never merged, and a reception that could
+belong to more than one pending message is kept apart. Each output message lists
+every reception in `metadata`, with its source and timestamp, and keeps the
+earliest timestamp. Messages are held for the longer window before output. Use
+`--no-deduplication` to pass every reception through; with a single source,
+nothing is held.
+
+```toml
+deduplication = 1000       # ms, identical raw AIS bits
+soft_deduplication = 3000  # ms, decoded feeds
+```
+
 ## Free AIS data sources
 
 | Source                           | Address                      | Notes                            |
