@@ -1,5 +1,18 @@
 # Changelog
 
+## [Unreleased]
+
+### Changed
+
+- Replace the Paho C library with the pure-Rust [rumqttc](https://github.com/bytebeamio/rumqtt) client for the Digitraffic MQTT source: building with `--features mqtt` no longer needs cmake or OpenSSL. TLS uses rustls with the ring provider and the bundled Mozilla root certificates. The source keeps its behaviour: a failed first connection is reported to the caller, later disconnections are retried with a growing delay (1 to 30 s) and the subscription is renewed.
+- `rs162::sources::mqtt::MqttError::Connection` now holds the error message instead of a Paho error, and a new `Address` variant reports unsupported broker URIs (`tcp://`, `mqtt://`, `ws://` and `wss://` are accepted).
+
+### Added
+
+- Connect the MQTT source through an HTTP `CONNECT` proxy when `https_proxy` (or `http_proxy`, `all_proxy`) is set, honouring `no_proxy`, with Basic credentials from the proxy URL. New `rs162::sources::proxy` module.
+- Send a `Digitraffic-User` header, as Digitraffic asks of its clients.
+- Include MQTT support in prebuilt release binaries, now that it has no C build dependencies.
+
 ## [0.2.1] - 2026-10-25
 
 ### Changed

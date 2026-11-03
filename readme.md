@@ -46,7 +46,7 @@ The default build includes RTL-SDR, Airspy, HackRF, and SSH support:
 cargo install --git https://github.com/xoolive/ship162
 ```
 
-MQTT support requires an extra C build dependency ([paho-mqtt](https://github.com/eclipse/paho.mqtt.c)) and must be opted into explicitly:
+Prebuilt binaries include MQTT support. When building from source it is opt-in (it uses the pure-Rust [rumqttc](https://github.com/bytebeamio/rumqtt) client, no C toolchain needed):
 
 ```sh
 cargo install ship162 --features mqtt
@@ -170,8 +170,8 @@ gain = { LNA = 13, MIX = 3, VGA = 13 }
 This is equivalent to `soapy = "driver=airspy"` with a source-level sample rate.
 Conflicting nested and source-level rates are rejected for either backend.
 These forms do not enable optional backends: SoapySDR still requires
-`--features soapy`, and MQTT requires `--features mqtt` (neither is in prebuilt
-binaries).
+`--features soapy` (not in prebuilt binaries), and MQTT requires `--features mqtt`
+when building from source (prebuilt binaries include it).
 Unsupported backends and malformed settings are reported by source/field name,
 rather than a generic untagged-enum error.
 
@@ -224,7 +224,7 @@ The `vessels-v2/status` service-status topic is received with the wildcard
 subscription but is not AIS data. It is ignored without emitting parse warnings;
 malformed location/metadata messages still produce diagnostics.
 
-Requires building with `--features mqtt`. Connects to the [Finnish Digitraffic](https://www.digitraffic.fi/en/marine-traffic/) broker by default:
+Included in prebuilt binaries; from source, requires `--features mqtt`. Connects to the [Finnish Digitraffic](https://www.digitraffic.fi/en/marine-traffic/) broker by default, over secure websockets. On hosts that only reach the Internet through an HTTP proxy, set `https_proxy` (and `no_proxy` for hosts to reach directly): the connection then goes through a `CONNECT` tunnel.
 
 ```toml
 [[sources]]
@@ -248,7 +248,7 @@ ship162 --serve-udp 0.0.0.0:5632 rtlsdr://
 | Source                           | Address                      | Notes                            |
 | -------------------------------- | ---------------------------- | -------------------------------- |
 | Norwegian Coastal Administration | `tcp://153.44.253.27:5631`   | IEC 61162-1 NMEA with timestamps |
-| Finnish Digitraffic              | `mqtt://mqtt.digitraffic.fi` | Requires `--features mqtt`       |
+| Finnish Digitraffic              | `mqtt://mqtt.digitraffic.fi` | MQTT over secure websockets      |
 
 ## Similar projects
 
