@@ -15,11 +15,12 @@ name = "ship162"
 path = "src/main.rs"
 
 [features]
-default = ['rtlsdr', 'airspy', 'hackrf', 'ssh']
+default = ['rtlsdr', 'airspy', 'hackrf', 'ssh', 'aisstream']
 airspy = ['desperado/airspy', 'rs162/airspy']
 hackrf = ['desperado/hackrf', 'rs162/hackrf']
 rtlsdr = ['desperado/rtlsdr', 'rs162/rtlsdr']
 soapy = ['desperado/soapy', 'rs162/soapy']
+aisstream = ["rs162/aisstream"]
 mqtt = ["rs162/mqtt"]
 ssh = ["rs162/ssh"]
 

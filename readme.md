@@ -218,6 +218,39 @@ ws = "ws://remote-host:88888"
 retry = { strategy = "fixed", delay_seconds = 10 }
 ```
 
+WebSocket and TCP sources go through an HTTP proxy when `http_proxy` (or `all_proxy`) is set and the host is not listed in `no_proxy`; see [Proxies](#proxies).
+
+### aisstream.io
+
+[aisstream.io](https://aisstream.io) relays decoded AIS messages from a worldwide network of terrestrial receivers. It needs a free API key, given by one of (first found):
+
+- `key`, the key itself, in the configuration file;
+- `key_file`, a file containing only the key (not both `key` and `key_file`);
+- the `AISSTREAM_API_KEY` environment variable.
+
+```toml
+[[sources]]
+[sources.aisstream]
+bbox = [[48.5, -6.0], [52.0, 3.0]] # optional: [[latitude, longitude], [latitude, longitude]]
+key = "..."                        # or key_file = "~/.config/ship162/aisstream_api_key"
+# url = "wss://stream.aisstream.io/v0/stream"  # optional, the default
+
+[[sources]]
+# several boxes, optional filters, and a retry delay
+aisstream = { bbox = [[[48, -6], [52, 3]], [[54, 7], [58, 13]]], message_types = ["PositionReport", "ShipStaticData"], mmsi = ["227006760"] }
+retry = { strategy = "fixed", delay_seconds = 10 }
+```
+
+With `key` in it, keep the configuration file private (`chmod 600`). The key is never printed in logs or error messages.
+
+Without `bbox`, the subscription covers the whole world. On the command line, use `aisstream://?bbox=lat,lon,lat,lon` (repeatable) with `AISSTREAM_API_KEY` set:
+
+```sh
+AISSTREAM_API_KEY=... ship162 --output channel.jsonl "aisstream://?bbox=48.5,-6,52,3"
+```
+
+Position reports (types 1–3, 18, 19) and static data (types 5, 24) are converted to the same messages as the NMEA decoder; other message types are ignored. The connection negotiates `permessage-deflate` compression, as aisstream.io requests, and goes through the HTTPS proxy when `https_proxy` is set. Enabled by default with the `aisstream` feature.
+
 ### MQTT
 
 The `vessels-v2/status` service-status topic is received with the wildcard
@@ -228,8 +261,26 @@ Included in prebuilt binaries; from source, requires `--features mqtt`. Connects
 
 ```toml
 [[sources]]
-mqtt = "mqtt://mqtt.digitraffic.fi"
+[sources.mqtt]
+url = "wss://meri.digitraffic.fi/mqtt" # optional, the default
+topic = "vessels-v2/#"                 # optional, the default
+client_id = "ship162-myname"           # optional, default: ship162- and a random suffix
 ```
+
+`mqtt = "ship162-myname"` (the client ID alone) connects to Digitraffic with the default topic. The broker URL accepts `wss://`, `ws://`, `mqtt://` and `tcp://`; messages must follow Digitraffic's `vessels-v2/<mmsi>/location` and `metadata` format. On the command line: `mqtt://?url=…&topic=…&client_id=…`.
+
+### Proxies
+
+On hosts that only reach the Internet through an HTTP proxy, ship162 opens network connections with a `CONNECT` tunnel, reading the same variables as curl:
+
+| Variable                     | Used for                               |
+| ---------------------------- | -------------------------------------- |
+| `https_proxy`, `HTTPS_PROXY` | aisstream.io, MQTT over `wss://`       |
+| `http_proxy`, `HTTP_PROXY`   | `ws://` sources, MQTT over `ws://`     |
+| `all_proxy`, `ALL_PROXY`     | fallback for all of them               |
+| `no_proxy`, `NO_PROXY`       | comma-separated hosts reached directly |
+
+Only `http://` proxies are supported; `http://user:password@proxy:3128` sends Basic credentials.
 
 ## Output
 
@@ -271,10 +322,11 @@ soft_deduplication = 3000  # ms, decoded feeds
 
 ## Free AIS data sources
 
-| Source                           | Address                      | Notes                            |
-| -------------------------------- | ---------------------------- | -------------------------------- |
-| Norwegian Coastal Administration | `tcp://153.44.253.27:5631`   | IEC 61162-1 NMEA with timestamps |
-| Finnish Digitraffic              | `mqtt://mqtt.digitraffic.fi` | MQTT over secure websockets      |
+| Source                           | Address                    | Notes                            |
+| -------------------------------- | -------------------------- | -------------------------------- |
+| Norwegian Coastal Administration | `tcp://153.44.253.27:5631` | IEC 61162-1 NMEA with timestamps |
+| Finnish Digitraffic              | `mqtt://`                  | MQTT over secure websockets      |
+| aisstream.io                     | `aisstream://?bbox=…`      | Free API key, worldwide          |
 
 ## Similar projects
 

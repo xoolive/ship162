@@ -36,6 +36,8 @@ use crate::{
     status::{RetryPolicy, SourceId, SourceRuntime},
 };
 
+#[cfg(feature = "aisstream")]
+pub mod aisstream;
 mod config;
 pub mod iq;
 #[cfg(feature = "mqtt")]
@@ -176,14 +178,158 @@ pub struct WebSocketConfig {
     pub retry: RetryPolicy,
 }
 
+/// One or several `[[latitude, longitude], [latitude, longitude]]` boxes
+#[cfg(feature = "aisstream")]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum BoundingBoxes {
+    One(rs162::sources::aisstream::BoundingBox),
+    Many(Vec<rs162::sources::aisstream::BoundingBox>),
+}
+
+#[cfg(feature = "aisstream")]
+impl Default for BoundingBoxes {
+    fn default() -> Self {
+        Self::One(rs162::sources::aisstream::BoundingBox::world())
+    }
+}
+
+#[cfg(feature = "aisstream")]
+impl BoundingBoxes {
+    /// All boxes as a list
+    #[must_use]
+    pub fn to_vec(&self) -> Vec<rs162::sources::aisstream::BoundingBox> {
+        match self {
+            Self::One(bbox) => vec![*bbox],
+            Self::Many(boxes) => boxes.clone(),
+        }
+    }
+}
+
+/// Environment variable holding the aisstream.io API key
+#[cfg(feature = "aisstream")]
+pub const AISSTREAM_API_KEY: &str = "AISSTREAM_API_KEY";
+
+#[cfg(feature = "aisstream")]
+#[derive(Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct AisStreamSettings {
+    /// Areas of interest. Defaults to the whole world
+    #[serde(default)]
+    pub bbox: BoundingBoxes,
+    /// The API key itself (never serialised nor printed). Exclusive with `key_file`
+    #[serde(default, skip_serializing)]
+    pub key: Option<String>,
+    /// File containing the API key. Exclusive with `key`
+    pub key_file: Option<String>,
+    /// Endpoint (`wss://`). Defaults to `wss://stream.aisstream.io/v0/stream`
+    pub url: Option<String>,
+    /// Optional MMSI filter (at most 200 entries)
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub mmsi: Vec<String>,
+    /// Optional aisstream.io message type filter, for example `PositionReport`
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub message_types: Vec<String>,
+}
+
+#[cfg(feature = "aisstream")]
+impl AisStreamSettings {
+    pub fn url(&self) -> &str {
+        self.url
+            .as_deref()
+            .unwrap_or(rs162::sources::aisstream::AISSTREAM_URL)
+    }
+
+    /// Reject what cannot work, before starting: both key settings, or a non-`wss://` url
+    pub fn validate(&self) -> Result<(), String> {
+        if self.key.is_some() && self.key_file.is_some() {
+            return Err("aisstream.io: set either `key` or `key_file`, not both".into());
+        }
+        let url =
+            Url::parse(self.url()).map_err(|error| format!("invalid aisstream.io url: {error}"))?;
+        if url.scheme() != "wss" {
+            return Err(format!(
+                "unsupported aisstream.io url scheme `{}`: expected wss",
+                url.scheme()
+            ));
+        }
+        Ok(())
+    }
+}
+
+#[cfg(feature = "aisstream")]
+impl fmt::Debug for AisStreamSettings {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("AisStreamSettings")
+            .field("bbox", &self.bbox)
+            .field("key", &self.key.as_ref().map(|_| "<hidden>"))
+            .field("key_file", &self.key_file)
+            .field("url", &self.url)
+            .field("mmsi", &self.mmsi)
+            .field("message_types", &self.message_types)
+            .finish()
+    }
+}
+
+#[cfg(feature = "aisstream")]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct AisStreamConfig {
+    /// aisstream.io subscription settings
+    pub aisstream: AisStreamSettings,
+    /// Reconnect policy. Defaults to a fixed five-second delay when omitted
+    #[serde(default)]
+    pub retry: RetryPolicy,
+}
+
 #[cfg(feature = "mqtt")]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct MqttConfig {
-    /// Legacy MQTT source value
-    pub mqtt: String,
-    // TODO: model broker and client ID separately without breaking the accepted config.
-    // paho-mqtt manages reconnects internally so it doesn't have a retry policy
+    /// Broker, topic and client ID
+    pub mqtt: MqttSettings,
+}
+
+/// An MQTT broker publishing Digitraffic-style vessel messages
+///
+/// In TOML, either a table, or a string with the client ID alone (the
+/// original form), connecting to Digitraffic.
+#[cfg(feature = "mqtt")]
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct MqttSettings {
+    /// Broker URI (`wss://`, `ws://`, `mqtt://` or `tcp://`). Defaults to Digitraffic
+    pub url: Option<String>,
+    /// Topic filter. Defaults to `vessels-v2/#`
+    pub topic: Option<String>,
+    /// Client ID, unique per connection. Defaults to `ship162-` and a random suffix
+    pub client_id: Option<String>,
+}
+
+#[cfg(feature = "mqtt")]
+impl MqttSettings {
+    pub fn url(&self) -> &str {
+        self.url
+            .as_deref()
+            .unwrap_or(rs162::sources::mqtt::MQTT_BROKER)
+    }
+
+    pub fn topic(&self) -> &str {
+        self.topic
+            .as_deref()
+            .unwrap_or(rs162::sources::mqtt::MQTT_TOPIC)
+    }
+
+    /// Reject URIs the MQTT client cannot connect to, before starting
+    pub fn validate(&self) -> Result<(), String> {
+        let url = Url::parse(self.url()).map_err(|error| format!("invalid MQTT url: {error}"))?;
+        match url.scheme() {
+            "wss" | "ws" | "mqtt" | "tcp" => Ok(()),
+            scheme => Err(format!(
+                "unsupported MQTT url scheme `{scheme}`: expected wss, ws, mqtt or tcp"
+            )),
+        }
+    }
 }
 
 #[cfg(feature = "rtlsdr")]
@@ -340,6 +486,12 @@ pub enum SourceParseError {
         source_name: &'static str,
         feature: &'static str,
     },
+    #[cfg(feature = "aisstream")]
+    #[error("invalid aisstream.io bounding box `{0}`: expected lat,lon,lat,lon")]
+    InvalidBoundingBox(String),
+    #[cfg(any(feature = "mqtt", feature = "aisstream"))]
+    #[error("{0}")]
+    Invalid(String),
     #[error("invalid file URL `{0}`")]
     InvalidFileUrl(Url),
     #[error("unsupported source scheme `{0}`")]
@@ -352,6 +504,8 @@ pub enum SourceParseError {
 pub enum Source {
     Tcp(TcpConfig),
     WebSocket(WebSocketConfig),
+    #[cfg(feature = "aisstream")]
+    AisStream(AisStreamConfig),
     #[cfg(feature = "mqtt")]
     Mqtt(MqttConfig),
     #[cfg(feature = "rtlsdr")]
@@ -378,8 +532,10 @@ impl Source {
                 WsPath::Long(config) => config.url.clone(),
             },
             Self::IqFile(config) => format!("file://{}", config.iqfile),
+            #[cfg(feature = "aisstream")]
+            Self::AisStream(_) => "aisstream.io".into(),
             #[cfg(feature = "mqtt")]
-            Self::Mqtt(config) => format!("mqtt: {}", config.mqtt),
+            Self::Mqtt(config) => format!("mqtt: {}", config.mqtt.url()),
             #[cfg(feature = "rtlsdr")]
             Self::RtlSdr(_) => "rtlsdr".into(),
             #[cfg(feature = "airspy")]
@@ -419,10 +575,55 @@ impl FromStr for Source {
                     retry: RetryPolicy::default(),
                 }))
             }
+            #[cfg(feature = "aisstream")]
+            "aisstream" => {
+                let mut settings = AisStreamSettings::default();
+                let mut boxes = vec![];
+                for (key, value) in url.query_pairs() {
+                    match key.as_ref() {
+                        "bbox" => boxes.push(parse_bounding_box(&value)?),
+                        "key_file" => settings.key_file = Some(value.into_owned()),
+                        "url" => settings.url = Some(value.into_owned()),
+                        "mmsi" => settings.mmsi.extend(value.split(',').map(str::to_string)),
+                        "message_types" => settings
+                            .message_types
+                            .extend(value.split(',').map(str::to_string)),
+                        _ => {}
+                    }
+                }
+                if !boxes.is_empty() {
+                    settings.bbox = BoundingBoxes::Many(boxes);
+                }
+                settings.validate().map_err(SourceParseError::Invalid)?;
+                Ok(Self::AisStream(AisStreamConfig {
+                    aisstream: settings,
+                    retry: RetryPolicy::default(),
+                }))
+            }
+            #[cfg(not(feature = "aisstream"))]
+            "aisstream" => Err(SourceParseError::FeatureDisabled {
+                source_name: "aisstream.io",
+                feature: "aisstream",
+            }),
             #[cfg(feature = "mqtt")]
-            "mqtt" => Ok(Self::Mqtt(MqttConfig {
-                mqtt: url.host_str().unwrap_or("ship162").to_string(),
-            })),
+            "mqtt" => {
+                // mqtt://?url=…&topic=…&client_id=… (Digitraffic by default)
+                let mut settings = MqttSettings::default();
+                for (key, value) in url.query_pairs() {
+                    match key.as_ref() {
+                        "url" => settings.url = Some(value.into_owned()),
+                        "topic" => settings.topic = Some(value.into_owned()),
+                        "client_id" => settings.client_id = Some(value.into_owned()),
+                        _ => {}
+                    }
+                }
+                // The original form, mqtt://<client id>
+                if settings.client_id.is_none() {
+                    settings.client_id = url.host_str().map(str::to_string);
+                }
+                settings.validate().map_err(SourceParseError::Invalid)?;
+                Ok(Self::Mqtt(MqttConfig { mqtt: settings }))
+            }
             #[cfg(not(feature = "mqtt"))]
             "mqtt" => Err(SourceParseError::FeatureDisabled {
                 source_name: "MQTT",
@@ -568,6 +769,25 @@ impl FromStr for Source {
                 url.scheme().to_string(),
             )),
         }
+    }
+}
+
+/// Parse `lat,lon,lat,lon` into a bounding box
+#[cfg(feature = "aisstream")]
+fn parse_bounding_box(
+    value: &str,
+) -> Result<rs162::sources::aisstream::BoundingBox, SourceParseError> {
+    let numbers = value
+        .split(',')
+        .map(|number| number.trim().parse::<f64>())
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|_| SourceParseError::InvalidBoundingBox(value.to_string()))?;
+    match numbers.as_slice() {
+        [lat1, lon1, lat2, lon2] => Ok(rs162::sources::aisstream::BoundingBox::new(
+            [*lat1, *lon1],
+            [*lat2, *lon2],
+        )),
+        _ => Err(SourceParseError::InvalidBoundingBox(value.to_string())),
     }
 }
 
@@ -1095,9 +1315,42 @@ mod tests {
     #[cfg(feature = "mqtt")]
     #[test]
     fn test_toml_mqtt() {
-        let source: Source = toml::from_str(r#"mqtt = "mqtt://mqtt.digitraffic.fi""#).unwrap();
+        // The original form: the client ID alone, connecting to Digitraffic
+        let source: Source = toml::from_str(r#"mqtt = "ship162-test""#).unwrap();
         let config = unwrap_source!(source, Mqtt);
-        assert_eq!(config.mqtt, "mqtt://mqtt.digitraffic.fi");
+        assert_eq!(config.mqtt.client_id.as_deref(), Some("ship162-test"));
+        assert_eq!(config.mqtt.url(), rs162::sources::mqtt::MQTT_BROKER);
+        assert_eq!(config.mqtt.topic(), "vessels-v2/#");
+
+        let source: Source = toml::from_str(
+            r#"mqtt = { url = "mqtt://localhost:1883", topic = "vessels-v2/+/location" }"#,
+        )
+        .unwrap_or_else(|error| panic!("{error}"));
+        let config = unwrap_source!(source, Mqtt);
+        assert_eq!(config.mqtt.url(), "mqtt://localhost:1883");
+        assert_eq!(config.mqtt.topic(), "vessels-v2/+/location");
+        assert_eq!(config.mqtt.client_id, None);
+        assert_eq!(
+            source_label(r#"mqtt = { url = "mqtt://localhost:1883" }"#),
+            "mqtt: mqtt://localhost:1883"
+        );
+
+        let error = toml::from_str::<Source>(r#"mqtt = { url = "https://example.org" }"#)
+            .unwrap_err()
+            .to_string();
+        assert!(error.contains("unsupported MQTT url scheme"), "{error}");
+
+        let source: Source = "mqtt://?url=wss://example.org/mqtt&client_id=me"
+            .parse()
+            .unwrap();
+        let config = unwrap_source!(source, Mqtt);
+        assert_eq!(config.mqtt.url(), "wss://example.org/mqtt");
+        assert_eq!(config.mqtt.client_id.as_deref(), Some("me"));
+    }
+
+    #[cfg(feature = "mqtt")]
+    fn source_label(toml: &str) -> String {
+        toml::from_str::<Source>(toml).unwrap().label()
     }
 
     #[test]
@@ -1209,5 +1462,121 @@ mod tests {
             let config = unwrap_source!(source, HackRf);
             assert_eq!(config.hackrf.config.device, Some(1));
         }
+    }
+
+    #[cfg(feature = "aisstream")]
+    #[test]
+    fn parses_aisstream_toml() {
+        use rs162::sources::aisstream::BoundingBox;
+
+        let source: Source = toml::from_str(
+            r#"aisstream = { bbox = [[48.5, -6.0], [52.0, 3.0]], key_file = "~/key" }
+            retry = { strategy = "fixed", delay_seconds = 10 }"#,
+        )
+        .unwrap_or_else(|error| panic!("{error}"));
+        let config = unwrap_source!(source, AisStream);
+        assert_eq!(
+            config.aisstream.bbox.to_vec(),
+            vec![BoundingBox::new([48.5, -6.0], [52.0, 3.0])]
+        );
+        assert_eq!(config.aisstream.key_file.as_deref(), Some("~/key"));
+
+        let source: Source = toml::from_str(
+            r#"aisstream = { bbox = [[[48, -6], [52, 3]], [[54, 7], [58, 13]]], message_types = ["PositionReport"] }"#,
+        )
+        .unwrap();
+        let config = unwrap_source!(source, AisStream);
+        assert_eq!(config.aisstream.bbox.to_vec().len(), 2);
+        assert_eq!(config.aisstream.message_types, vec!["PositionReport"]);
+
+        let source: Source = toml::from_str("aisstream = {}").unwrap();
+        let config = unwrap_source!(source, AisStream);
+        assert_eq!(config.aisstream.bbox.to_vec(), vec![BoundingBox::world()]);
+
+        let error = toml::from_str::<Source>(r#"aisstream = { api_key = "secret" }"#)
+            .unwrap_err()
+            .to_string();
+        assert!(error.contains("unknown field `api_key`"), "{error}");
+    }
+
+    #[cfg(feature = "aisstream")]
+    #[test]
+    fn parses_aisstream_key_table() {
+        #[derive(Deserialize)]
+        struct Sources {
+            sources: Vec<Source>,
+        }
+        let parsed: Sources = toml::from_str(
+            r#"
+            [[sources]]
+            [sources.aisstream]
+            bbox = [[48.5, -6.0], [52.0, 3.0]]
+            key = "secret"
+            "#,
+        )
+        .unwrap_or_else(|error| panic!("{error}"));
+        let config = unwrap_source!(parsed.sources.into_iter().next().unwrap(), AisStream);
+        assert_eq!(config.aisstream.key.as_deref(), Some("secret"));
+        assert!(!format!("{config:?}").contains("secret"));
+
+        let error = toml::from_str::<Sources>(
+            r#"
+            [[sources]]
+            [sources.aisstream]
+            key = "secret"
+            key_file = "~/key"
+            "#,
+        )
+        .err()
+        .expect("key and key_file are exclusive")
+        .to_string();
+        assert!(error.contains("not both"), "{error}");
+        assert!(!error.contains("secret"), "{error}");
+
+        let parsed: Sources = toml::from_str(
+            r#"
+            [[sources]]
+            [sources.aisstream]
+            url = "wss://relay.example.org/v0/stream"
+            "#,
+        )
+        .unwrap();
+        let config = unwrap_source!(parsed.sources.into_iter().next().unwrap(), AisStream);
+        assert_eq!(config.aisstream.url(), "wss://relay.example.org/v0/stream");
+        assert_eq!(
+            AisStreamSettings::default().url(),
+            "wss://stream.aisstream.io/v0/stream"
+        );
+        let error = toml::from_str::<Source>(r#"aisstream = { url = "ws://insecure" }"#)
+            .unwrap_err()
+            .to_string();
+        assert!(error.contains("expected wss"), "{error}");
+    }
+
+    #[cfg(feature = "aisstream")]
+    #[test]
+    fn parses_aisstream_url() {
+        use rs162::sources::aisstream::BoundingBox;
+
+        let source: Source = "aisstream://?bbox=48.5,-6,52,3&bbox=54,7,58,13&key_file=/tmp/key"
+            .parse()
+            .unwrap();
+        let config = unwrap_source!(source, AisStream);
+        assert_eq!(
+            config.aisstream.bbox.to_vec(),
+            vec![
+                BoundingBox::new([48.5, -6.0], [52.0, 3.0]),
+                BoundingBox::new([54.0, 7.0], [58.0, 13.0])
+            ]
+        );
+        assert_eq!(config.aisstream.key_file.as_deref(), Some("/tmp/key"));
+        assert_eq!(
+            Source::from_str("aisstream://").unwrap().label(),
+            "aisstream.io"
+        );
+        assert!(matches!(
+            Source::from_str("aisstream://?bbox=1,2,3"),
+            Err(SourceParseError::InvalidBoundingBox(_))
+        ));
     }
 }
