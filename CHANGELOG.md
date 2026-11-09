@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-11-09
+
+### Compatibility
+
+- The MQTT library error API changes with the move from Paho to rumqttc; downstream callers matching `MqttError` must adapt to the new variants.
+- JSON output adds reception `metadata`, and multi-source duplicates are merged by default. Use `--no-deduplication` to retain separate messages.
+- Existing MQTT client-ID strings and unrecognised IQ filenames keep their previous configuration defaults.
+
 ### Changed
 
 - Update Desperado and its SDR wrappers to 0.5.2. IQ replay now infers sample rate and format from GQRX/rtl_sdr filenames (including `.zst`), with explicit `sample_rate` and `format` overrides. Unrecognised filenames retain CU8/288 kHz defaults. Format aliases such as `U8`, `S16_LE` and `fc` are accepted; top-level sample rates also accept SI strings such as `"1.536 MHz"`. Reject recognised captures not centered on 162 MHz and unsupported SDRuno WAV containers.
