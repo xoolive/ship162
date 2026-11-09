@@ -101,9 +101,13 @@ bias_tee = false   # Enable to power external LNA (default: false)
 
 # --- IQ File Source ---
 
-# Example 12: IQ file replay (cu8 format, sample_rate defaults to 288 kHz)
+# Example 12: IQ replay (GQRX/rtl_sdr filename detection, including .zst)
+# Unknown names default to CU8 at 288 kHz. Explicit fields override detection.
+# Captures must be centered on 162 MHz; SDRuno WAV is not supported.
 # [[sources]]
 # iqfile = "/path/to/recording.iq"
+# sample_rate = "1.536 MHz" # or numeric Hz
+# format = "S16_LE"        # aliases include U8, S16 and fc
 
 # --- TCP Source ---
 

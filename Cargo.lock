@@ -1119,9 +1119,9 @@ dependencies = [
 
 [[package]]
 name = "desperado"
-version = "0.5.1"
+version = "0.5.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3184e8434c3ba789e2ea175d9a631f350a9b7b27fefbac6616fc82a4ce2a80cb"
+checksum = "e5d0a44460d70b19d05d16517e0e0b5696c45dc77debc5af11c5f6cfdd53cfa1"
 dependencies = [
  "async-compression",
  "biquad",
@@ -3213,9 +3213,9 @@ dependencies = [
 
 [[package]]
 name = "rs-hackrf"
-version = "0.5.1"
+version = "0.5.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6858103e0ab37f53122d6bbd528d510f999f32249bc62587d1802fd8e9edeb26"
+checksum = "53727ffef8d8092a9e9f0bbce1350deed0a75ee41a9404986d4dce72034c16bf"
 dependencies = [
  "nusb",
  "thiserror 2.0.21",
@@ -3224,9 +3224,9 @@ dependencies = [
 
 [[package]]
 name = "rs-rtl"
-version = "0.5.1"
+version = "0.5.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "44dac86f459e54b8256e51ee865ac63e4e2058c11c7ff5361ed7e7deeaa1ecd9"
+checksum = "b2260a79b7705ad9da2b8c4acfa84f0a09f28a02031b768f88bdf32e3faa33c6"
 dependencies = [
  "nusb",
  "thiserror 2.0.21",
@@ -3235,9 +3235,9 @@ dependencies = [
 
 [[package]]
 name = "rs-spy"
-version = "0.5.1"
+version = "0.5.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "81a41e859f93a66432c0aeb75d154adec088135386a5d6053936fa5587bbd436"
+checksum = "e82b5d2fa2af7072cf8881f0a7a97fa0c125743493db56f1bc1d87c2a7d3abdc"
 dependencies = [
  "num-complex",
  "nusb",

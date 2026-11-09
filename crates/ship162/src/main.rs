@@ -719,6 +719,9 @@ async fn main() -> Result<()> {
             }
             sources::Source::IqFile(source_config) => {
                 let file_clone = tx.clone();
+                let (sample_rate, format) = source_config
+                    .replay_parameters()
+                    .map_err(anyhow::Error::msg)?;
                 let file = source_config.iqfile;
                 let runtime = SourceRuntime::new(
                     source_id,
@@ -731,13 +734,7 @@ async fn main() -> Result<()> {
                     runtime,
                     shutdown_rx,
                     false,
-                    move || {
-                        AisAsyncIqSource::from_file(
-                            file.clone(),
-                            AIS_SAMPLE_RATE_288K,
-                            desperado::IqFormat::Cu8,
-                        )
-                    },
+                    move || AisAsyncIqSource::from_file(file.clone(), sample_rate, format),
                 ))
             }
             sources::Source::WebSocket(source_config) => {
@@ -978,6 +975,10 @@ fn initial_source_state(sources: &[sources::Source]) -> AppState {
 fn validate_sources(sources: &[sources::Source]) -> Result<()> {
     for source in sources {
         let rate: Option<f64> = match source {
+            sources::Source::IqFile(config) => {
+                config.replay_parameters().map_err(anyhow::Error::msg)?;
+                None
+            }
             #[cfg(feature = "rtlsdr")]
             sources::Source::RtlSdr(config) => config.sample_rate,
             #[cfg(feature = "soapy")]
