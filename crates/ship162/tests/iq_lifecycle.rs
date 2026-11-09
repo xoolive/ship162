@@ -5,14 +5,26 @@ use std::{
 };
 
 fn run_with_sources(captures: &[Option<&[u8]>]) -> Output {
+    let names: Vec<_> = (0..captures.len())
+        .map(|index| format!("capture-{index}.cu8"))
+        .collect();
+    let captures: Vec<_> = captures
+        .iter()
+        .zip(&names)
+        .map(|(bytes, name)| (name.as_str(), *bytes, ""))
+        .collect();
+    run_named_sources(&captures)
+}
+
+fn run_named_sources(captures: &[(&str, Option<&[u8]>, &str)]) -> Output {
     let directory = tempfile::tempdir().unwrap();
     let mut config = String::from("verbose = true\n");
-    for (index, bytes) in captures.iter().enumerate() {
-        let path = directory.path().join(format!("capture-{index}.cu8"));
+    for (name, bytes, settings) in captures {
+        let path = directory.path().join(name);
         if let Some(bytes) = bytes {
             std::fs::write(&path, bytes).unwrap();
         }
-        config.push_str(&format!("\n[[sources]]\niqfile = {path:?}\n"));
+        config.push_str(&format!("\n[[sources]]\niqfile = {path:?}\n{settings}\n"));
     }
     let config_path = directory.path().join("config.toml");
     std::fs::write(&config_path, config).unwrap();
@@ -39,6 +51,48 @@ fn run_with_sources(captures: &[Option<&[u8]>]) -> Output {
         }
         thread::sleep(Duration::from_millis(20));
     }
+}
+
+#[test]
+fn filename_inferred_rate_decodes_the_96khz_ais_fixture() {
+    let capture = std::fs::read(
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../rs162/data/ais_96k.bin"),
+    )
+    .unwrap();
+    let output = run_named_sources(&[("rtlsdr_162000000_96000_cu8.iq", Some(&capture), "")]);
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let messages: Vec<serde_json::Value> = String::from_utf8(output.stdout)
+        .unwrap()
+        .lines()
+        .map(|line| serde_json::from_str(line).unwrap())
+        .collect();
+    assert_eq!(messages.len(), 56);
+}
+
+#[test]
+fn inferred_and_overridden_formats_reach_the_replay_source() {
+    // One CU8 sample, but not enough bytes for a CF32 sample. This distinguishes
+    // filename inference from the legacy hardcoded CU8 replay path.
+    let filename = "gqrx_20260603_083011_162000000_96000_fc.raw";
+    let inferred = run_named_sources(&[(filename, Some(&[128, 128]), "")]);
+    assert!(!inferred.status.success());
+    assert!(String::from_utf8_lossy(&inferred.stderr)
+        .to_lowercase()
+        .contains("truncat"));
+    let overridden = run_named_sources(&[(
+        filename,
+        Some(&[128, 128]),
+        "format = 'U8'\nsample_rate = '288 kHz'",
+    )]);
+    assert!(
+        overridden.status.success(),
+        "{}",
+        String::from_utf8_lossy(&overridden.stderr)
+    );
 }
 
 #[test]

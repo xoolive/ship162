@@ -4,6 +4,7 @@
 
 ### Changed
 
+- Update Desperado and its SDR wrappers to 0.5.2. IQ replay now infers sample rate and format from GQRX/rtl_sdr filenames (including `.zst`), with explicit `sample_rate` and `format` overrides. Unrecognised filenames retain CU8/288 kHz defaults. Format aliases such as `U8`, `S16_LE` and `fc` are accepted; top-level sample rates also accept SI strings such as `"1.536 MHz"`. Reject recognised captures not centered on 162 MHz and unsupported SDRuno WAV containers.
 - Replace the Paho C library with the pure-Rust [rumqttc](https://github.com/bytebeamio/rumqtt) client for the Digitraffic MQTT source: building with `--features mqtt` no longer needs cmake or OpenSSL. TLS uses rustls with the ring provider and the bundled Mozilla root certificates. The source keeps its behaviour: a failed first connection is reported to the caller, later disconnections are retried with a growing delay (1 to 30 s) and the subscription is renewed.
 - `rs162::sources::mqtt::MqttError::Connection` now holds the error message instead of a Paho error, and a new `Address` variant reports unsupported broker URIs (`tcp://`, `mqtt://`, `ws://` and `wss://` are accepted).
 

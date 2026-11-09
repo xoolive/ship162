@@ -457,8 +457,49 @@ impl<'de> Deserialize<'de> for HackRfConfig {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct IqFileConfig {
-    /// Path to a CU8 IQ recording replayed at 288 kHz
+    /// Path to a raw IQ recording, optionally Zstandard-compressed
     pub iqfile: String,
+    /// Sample rate in Hz, overriding filename metadata (fallback: 288 kHz)
+    pub sample_rate: Option<f64>,
+    /// Sample format, overriding filename metadata (fallback: CU8)
+    pub format: Option<desperado::IqFormat>,
+}
+
+impl IqFileConfig {
+    /// Resolve explicit settings before capture filename metadata and legacy defaults.
+    ///
+    /// The AIS demodulator requires recordings centered on 162 MHz. WAV containers
+    /// are not raw IQ and cannot be replayed by this source.
+    pub fn replay_parameters(&self) -> Result<(u32, desperado::IqFormat), String> {
+        use desperado::capture::{parse_capture_filename, CaptureConvention};
+        let metadata = parse_capture_filename(&self.iqfile);
+        if let Some(metadata) = metadata {
+            if metadata.convention == CaptureConvention::Sdruno {
+                return Err(
+                    "SDRuno WAV captures are not supported; convert to raw IQ first".into(),
+                );
+            }
+            if let Some(center) = metadata.center_freq_hz {
+                if center != 162_000_000 {
+                    return Err(format!("IQ capture center frequency is {center} Hz; AIS replay requires 162000000 Hz"));
+                }
+            }
+        }
+        let rate = self
+            .sample_rate
+            .or_else(|| metadata.and_then(|meta| meta.sample_rate_hz).map(f64::from))
+            .unwrap_or(288_000.0);
+        if !rate.is_finite() || rate <= 0.0 || rate > 12_288_000.0 || rate.fract() != 0.0 {
+            return Err(format!(
+                "invalid IQ sample rate {rate}: expected integer Hz in 1..=12288000"
+            ));
+        }
+        let format = self
+            .format
+            .or_else(|| metadata.and_then(|meta| meta.format))
+            .unwrap_or(desperado::IqFormat::Cu8);
+        Ok((rate as u32, format))
+    }
 }
 
 #[derive(Debug, Error)]
@@ -764,6 +805,8 @@ impl FromStr for Source {
                     .map_err(|_| SourceParseError::InvalidFileUrl(url.clone()))?
                     .to_string_lossy()
                     .into_owned(),
+                sample_rate: None,
+                format: None,
             })),
             _ => Err(SourceParseError::UnsupportedScheme(
                 url.scheme().to_string(),

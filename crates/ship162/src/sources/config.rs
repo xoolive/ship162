@@ -56,6 +56,7 @@ pub(super) struct RawSource {
     airspy: Option<RawAirspy>,
     hackrf: Option<RawHackrf>,
     iqfile: Option<String>,
+    format: Option<desperado::IqFormat>,
     retry: Option<RetryPolicy>,
     #[serde(flatten)]
     settings: RawSdrSettings,
@@ -68,6 +69,7 @@ pub(super) struct RawSource {
 #[derive(Deserialize)]
 struct RawSdrSettings {
     gain: Option<Gain>,
+    #[serde(default, deserialize_with = "deserialize_sample_rate")]
     sample_rate: Option<f64>,
     bias_tee: Option<bool>,
 }
@@ -103,6 +105,25 @@ struct RawSoapyTable {
     sample_rate: Option<f64>,
     #[serde(flatten)]
     extra: BTreeMap<String, IgnoredAny>,
+}
+
+fn deserialize_sample_rate<'de, D>(deserializer: D) -> Result<Option<f64>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    #[derive(Deserialize)]
+    #[serde(untagged)]
+    enum Rate {
+        Number(f64),
+        Text(String),
+    }
+    match Option::<Rate>::deserialize(deserializer)? {
+        Some(Rate::Number(rate)) => Ok(Some(rate)),
+        Some(Rate::Text(rate)) => desperado::parse_si_value(&rate)
+            .map(Some)
+            .map_err(serde::de::Error::custom),
+        None => Ok(None),
+    }
 }
 
 fn reject_unknown_fields(
@@ -152,10 +173,23 @@ impl TryFrom<RawSource> for Source {
             return Err(ONE_BACKEND.into());
         }
         reject_unknown_fields(kind, "source", &input.extra)?;
-        if !matches!(kind, "rtlsdr" | "soapy" | "airspy" | "hackrf") {
+        if kind != "iqfile" && input.format.is_some() {
+            return Err(format!("invalid `{kind}` source: unknown field `format`"));
+        }
+        if !matches!(kind, "rtlsdr" | "soapy" | "airspy" | "hackrf" | "iqfile") {
             for (field, present) in [
                 ("gain", input.settings.gain.is_some()),
                 ("sample_rate", input.settings.sample_rate.is_some()),
+                ("bias_tee", input.settings.bias_tee.is_some()),
+            ] {
+                if present {
+                    return Err(format!("invalid `{kind}` source: unknown field `{field}`"));
+                }
+            }
+        }
+        if kind == "iqfile" {
+            for (field, present) in [
+                ("gain", input.settings.gain.is_some()),
                 ("bias_tee", input.settings.bias_tee.is_some()),
             ] {
                 if present {
@@ -185,8 +219,14 @@ impl TryFrom<RawSource> for Source {
             })),
             RawSource {
                 iqfile: Some(iqfile),
+                format,
+                settings,
                 ..
-            } => Ok(Self::IqFile(IqFileConfig { iqfile })),
+            } => Ok(Self::IqFile(IqFileConfig {
+                iqfile,
+                sample_rate: settings.sample_rate,
+                format,
+            })),
             #[cfg(feature = "aisstream")]
             RawSource {
                 aisstream: Some(aisstream),
@@ -330,6 +370,98 @@ impl TryFrom<RawSource> for Source {
 
 #[cfg(test)]
 mod tests {
+    fn replay(input: &str) -> Result<(u32, desperado::IqFormat), String> {
+        let source: super::Source = toml::from_str(input).map_err(|error| error.to_string())?;
+        let super::Source::IqFile(config) = source else {
+            panic!("expected IQ file source");
+        };
+        config.replay_parameters()
+    }
+
+    #[test]
+    fn capture_filenames_infer_rate_and_format() {
+        use desperado::IqFormat;
+        for (name, rate, format) in [
+            (
+                "gqrx_20260603_083011_162000000_1536000_fc.raw",
+                1_536_000,
+                IqFormat::Cf32,
+            ),
+            (
+                "gqrx_20260603_083011_162000000_96000_S16_LE.raw.zst",
+                96_000,
+                IqFormat::Cs16,
+            ),
+            (
+                "rtlsdr_162000000_288000_recording.rtl",
+                288_000,
+                IqFormat::Cu8,
+            ),
+            (
+                "rtlsdr_20260728_162000000_96000_S16.iq.zst",
+                96_000,
+                IqFormat::Cs16,
+            ),
+        ] {
+            assert_eq!(
+                replay(&format!("iqfile = '{name}'")).unwrap(),
+                (rate, format)
+            );
+        }
+        assert_eq!(
+            replay("iqfile = 'recording.iq'").unwrap(),
+            (288_000, IqFormat::Cu8)
+        );
+    }
+
+    #[test]
+    fn explicit_replay_settings_override_filename_and_accept_aliases() {
+        use desperado::IqFormat;
+        for (alias, format) in [
+            ("U8", IqFormat::Cu8),
+            ("S16", IqFormat::Cs16),
+            ("S16_LE", IqFormat::Cs16),
+            ("fc", IqFormat::Cf32),
+        ] {
+            let input = format!("iqfile = 'gqrx_20260603_083011_162000000_1536000_fc.raw'\nsample_rate = '96 kHz'\nformat = '{alias}'");
+            assert_eq!(replay(&input).unwrap(), (96_000, format));
+        }
+        assert_eq!(
+            replay("iqfile = 'recording.iq'\nsample_rate = 96000\nformat = 'cu8'")
+                .unwrap()
+                .0,
+            96_000
+        );
+        assert_eq!(
+            replay("iqfile = 'recording.iq'\nsample_rate = '1.536 MHz'")
+                .unwrap()
+                .0,
+            1_536_000
+        );
+    }
+
+    #[test]
+    fn invalid_or_unsupported_replay_settings_are_rejected() {
+        for rate in ["0", "-1", "nan", "inf", "96000.5", "12288001"] {
+            assert!(
+                replay(&format!("iqfile = 'recording.iq'\nsample_rate = {rate}"))
+                    .unwrap_err()
+                    .contains("sample rate")
+            );
+        }
+        assert!(replay("iqfile = 'rtlsdr_100000000_288000_dump.rtl'")
+            .unwrap_err()
+            .contains("center frequency"));
+        assert!(replay("iqfile = 'SDRuno_20200908_152020Z_162000kHz.wav'")
+            .unwrap_err()
+            .contains("WAV"));
+        assert!(replay("iqfile = 'recording.iq'\nformat = 'invalid'").is_err());
+        let error = toml::from_str::<super::Source>("tcp = 'localhost:1234'\nformat = 'U8'")
+            .unwrap_err()
+            .to_string();
+        assert!(error.contains("unknown field `format`"), "{error}");
+    }
+
     use super::Source;
 
     #[test]

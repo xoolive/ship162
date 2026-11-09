@@ -187,8 +187,26 @@ workers before exit. Invalid sample rates are rejected before starting sources.
 iqfile = "/path/to/recording.iq"
 ```
 
-The current file configuration expects raw CU8 IQ at 288 kHz. File sources are
-finite and are not retried: the application exits when all sources finish.
+GQRX and rtl_sdr capture filenames automatically supply the sample rate and IQ
+format, including recordings compressed with `.zst`. For example,
+`gqrx_20260603_083011_162000000_1536000_fc.raw` selects CF32 at 1.536 MHz.
+Unrecognised names retain the defaults: raw CU8 at 288 kHz. Explicit settings
+override filename detection:
+
+```toml
+[[sources]]
+iqfile = "/path/to/recording.iq"
+sample_rate = "1.536 MHz" # numeric Hz also accepted
+format = "S16_LE"        # cu8/U8, cs8/S8, cs16/S16/S16_LE, cf32/fc
+```
+
+Format aliases are case-insensitive. Top-level SDR `sample_rate` fields also
+accept SI strings such as `"288 kHz"`. Recordings must be centered on 162 MHz;
+recognized filenames with a different center frequency are rejected. SDRuno WAV
+containers are not supported and must first be converted to raw IQ. Filename
+capture timestamps are not used to date decoded messages.
+
+File sources are finite and are not retried: the application exits when all sources finish.
 Missing or truncated captures produce a nonzero exit status, rather than being
 silently ignored. When a live source is also configured, it continues receiving.
 

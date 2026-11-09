@@ -28,7 +28,7 @@ futures = "0.3.32"
 tokio = { version = "1", features = ["full"] }
 once_cell = "1.21.4"
 tracing = "0.1.44"
-desperado = "0.5.1"
+desperado = "0.5.2"
 rumqttc = { version = "0.25.1", optional = true, default-features = false, features = ["use-rustls-no-provider", "websocket", "proxy"] }
 rustls = { version = "0.23", optional = true, default-features = false, features = ["ring", "std", "tls12", "logging"] }
 webpki-roots = { version = "1", optional = true }
